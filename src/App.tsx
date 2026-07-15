@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState, lazy, Suspense } from 'react';
+import { Analytics } from '@vercel/analytics/react';
 import { NavProvider, useNav } from './nav';
 import { PlayerProvider } from './player';
 import { useLyrics } from './useLyrics';
@@ -202,6 +203,7 @@ export default function App() {
           Guest users can listen to 5 songs per hour. Sign in to keep listening without limits.
         </NoticeModal>
       </PlayerProvider>
+      <Analytics />
     </NavProvider>
   );
 }
