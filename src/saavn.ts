@@ -11,11 +11,8 @@ import type { Song } from './types';
 import { getSettings } from './settings';
 
 // In dev, Vite proxies /jiosaavn/* → https://www.jiosaavn.com/*
-// In production, calls go directly (same-origin CORS not an issue for Saavn CDN)
-const JIOSAAVN_API =
-  import.meta.env.DEV
-    ? '/jiosaavn/api.php'
-    : 'https://www.jiosaavn.com/api.php';
+// In production, Vercel rewrites /jiosaavn/api.php → /api/jiosaavn (serverless proxy)
+const JIOSAAVN_API = '/jiosaavn/api.php';
 const DES_KEY = '38346591';
 
 // ─── DES-ECB decryption (Web Crypto API) ────────────────────────────────────
