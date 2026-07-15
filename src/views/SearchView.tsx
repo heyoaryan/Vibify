@@ -14,7 +14,9 @@ interface SpeechRecognitionLike {
   lang: string;
   start: () => void;
   stop: () => void;
-  onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string; confidence: number }>> }) => void) | null;
+  onresult: ((event: {
+    results: ArrayLike<ArrayLike<{ transcript: string; confidence: number }> & { isFinal: boolean }>;
+  }) => void) | null;
   onerror: ((event: { error: string }) => void) | null;
   onend: (() => void) | null;
 }
@@ -28,6 +30,31 @@ declare global {
     webkitSpeechRecognition?: SpeechRecognitionConstructor;
     SpeechRecognition?: SpeechRecognitionConstructor;
   }
+}
+
+// Remove duplicate songs by ID, then by (title + artist), then by imageUrl
+function deduplicateSongs(songs: Song[]): Song[] {
+  const seenIds = new Set<string>();
+  const seenTitleArtist = new Set<string>();
+  const seenImages = new Set<string>();
+  const result: Song[] = [];
+
+  for (const song of songs) {
+    if (seenIds.has(song.id)) continue;
+
+    const titleArtistKey = `${song.title.toLowerCase().trim()}|${song.artist.toLowerCase().trim()}`;
+    if (seenTitleArtist.has(titleArtistKey)) continue;
+
+    // Same image URL = almost certainly the same song
+    if (song.imageUrl && seenImages.has(song.imageUrl)) continue;
+
+    seenIds.add(song.id);
+    seenTitleArtist.add(titleArtistKey);
+    if (song.imageUrl) seenImages.add(song.imageUrl);
+    result.push(song);
+  }
+
+  return result;
 }
 
 const GENRES = [
@@ -84,9 +111,41 @@ export function SearchView() {
   useEffect(() => {
     setBrowseLoading(true);
     searchSongs('trending hindi songs 2024', 10)
-      .then(setBrowseAll)
+      .then(songs => setBrowseAll(deduplicateSongs(songs)))
       .catch(() => {})
       .finally(() => setBrowseLoading(false));
+  }, []);
+
+  // Listen for "Go to artist" from NowPlayingView action sheet
+  // Direct fetch — bypasses debounce so results load immediately on navigation
+  useEffect(() => {
+    const handler = async (e: Event) => {
+      const artist = (e as CustomEvent<string>).detail;
+      if (!artist) return;
+
+      // Set the visible query text
+      setQuery(artist);
+      setLoading(true);
+      setSearched(false);
+
+      try {
+        const remoteResults = await searchSongs(artist, 20);
+        const next = remoteResults.length > 0
+          ? deduplicateSongs(remoteResults)
+          : deduplicateSongs(localSearch(artist, 20));
+        setResults(next);
+      } catch {
+        setResults(deduplicateSongs(localSearch(artist, 20)));
+      } finally {
+        setSearched(true);
+        setLoading(false);
+      }
+    };
+
+    window.addEventListener('vibify-search', handler);
+    return () => window.removeEventListener('vibify-search', handler);
+  // localSearch is defined inside component — safe to omit from deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -143,10 +202,12 @@ export function SearchView() {
     debounceRef.current = setTimeout(async () => {
       try {
         const remoteResults = await searchSongs(q, 20);
-        const nextResults = remoteResults.length > 0 ? remoteResults : localSearch(q, 20);
+        const nextResults = remoteResults.length > 0
+          ? deduplicateSongs(remoteResults)
+          : deduplicateSongs(localSearch(q, 20));
         setResults(nextResults);
       } catch {
-        setResults(localSearch(q, 20));
+        setResults(deduplicateSongs(localSearch(q, 20)));
       } finally {
         setSearched(true);
         setLoading(false);
@@ -192,7 +253,7 @@ export function SearchView() {
   };
 
   const playGenre = async (g: typeof GENRES[0]) => {
-    const list = await getArtistSongs(g.query, 10);
+    const list = deduplicateSongs(await getArtistSongs(g.query, 10));
     if (list.length) playSongs(list, list[0].id);
   };
 

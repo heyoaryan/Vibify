@@ -1,16 +1,64 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" dir="ltr">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+
+    <!-- ── Viewport & display ─────────────────────────────────────────── -->
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+
+    <!-- ── Primary meta ───────────────────────────────────────────────── -->
+    <title>Vibify — Music for every moment</title>
+    <meta name="description" content="Vibify — Music for every moment" />
+    <meta name="application-name" content="Vibify" />
+    <meta name="generator" content="Vite" />
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="color-scheme" content="dark" />
+
+    <!-- ── Theme color (status bar) ───────────────────────────────────── -->
     <meta name="theme-color" content="#05090c" />
+
+    <!-- ── Favicon / icons ────────────────────────────────────────────── -->
+    <!-- iOS home-screen icon — must be PNG, SVG not supported -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180.png" />
+    <!-- Fallback favicon -->
+    <link rel="icon" type="image/svg+xml" href="/icons/icon-512.svg" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+
+    <!-- ── PWA manifest ────────────────────────────────────────────────── -->
     <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="apple-touch-icon" href="/icons/icon-192.svg" />
+
+    <!-- ── iOS PWA (Safari / WebKit) ──────────────────────────────────── -->
+    <!-- Required for full-screen standalone mode on iOS -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <!-- black-translucent lets the app extend behind the status bar -->
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <title>Arsith Tunes — Music for every moment</title>
-    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="apple-mobile-web-app-title" content="Vibify" />
+    <!-- Splash screen tint while app shell loads (iOS 15.4+) -->
+    <meta name="apple-mobile-web-app-orientations" content="portrait" />
+
+    <!-- ── Android / Chrome ────────────────────────────────────────────── -->
+    <meta name="mobile-web-app-capable" content="yes" />
+
+    <!-- ── Windows / Microsoft ─────────────────────────────────────────── -->
+    <meta name="msapplication-TileColor" content="#05090c" />
+    <meta name="msapplication-TileImage" content="/icons/icon-192.png" />
+    <meta name="msapplication-tap-highlight" content="no" />
+    <meta name="msapplication-starturl" content="/" />
+
+    <!-- ── Open Graph (for share previews) ───────────────────────────── -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Vibify — Music for every moment" />
+    <meta property="og:description" content="Stream your favourite songs, albums and playlists." />
+    <meta property="og:image" content="/icons/icon-512.png" />
+    <meta property="og:image:width" content="512" />
+    <meta property="og:image:height" content="512" />
+
+    <!-- ── Twitter card ───────────────────────────────────────────────── -->
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Vibify — Music for every moment" />
+    <meta name="twitter:description" content="Stream your favourite songs, albums and playlists." />
+    <meta name="twitter:image" content="/icons/icon-512.png" />
   </head>
   <body>
     <div id="root"></div>

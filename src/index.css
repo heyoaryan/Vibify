@@ -5,14 +5,22 @@
 @tailwind utilities;
 
 :root { color-scheme: dark; }
+
 html {
   height: 100%;
+  /* Use dvh-based height so iOS Safari address bar doesn't cause jumps */
+  height: 100dvh;
   background: #05090c;
   -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
   -webkit-tap-highlight-color: transparent;
   overflow-x: hidden;
 }
-html, body, #root { height: 100%; }
+
+html, body, #root {
+  height: 100%;
+  height: 100dvh;
+}
 
 body {
   margin: 0;
@@ -22,8 +30,19 @@ body {
   font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  overscroll-behavior-y: none;
+  /* Prevent pull-to-refresh & bounce on all platforms */
+  overscroll-behavior: none;
+  /* Removes 300ms tap delay on mobile */
   touch-action: manipulation;
+  /* Prevent text selection flicker on fast taps */
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Re-enable text selection inside inputs and text areas */
+input, textarea, [contenteditable] {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 * { box-sizing: border-box; }
@@ -31,6 +50,7 @@ img, canvas, video { display: block; max-width: 100%; }
 img { content-visibility: auto; }
 button, input, textarea, select { font: inherit; }
 
+/* Respect reduced motion — accessibility */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
@@ -40,16 +60,27 @@ button, input, textarea, select { font: inherit; }
   }
 }
 
-/* Scrollbar */
-* { scrollbar-width: thin; scrollbar-color: #2a3d4a transparent; }
-*::-webkit-scrollbar { width: 8px; height: 8px; }
-*::-webkit-scrollbar-track { background: transparent; }
-*::-webkit-scrollbar-thumb {
-  background: #21333f; border-radius: 99px;
+/* ── Scrollable containers ───────────────────────────────────────────────── */
+/* iOS momentum scroll for any overflow-y-auto / overflow-y-scroll container */
+[class*="overflow-y-auto"],
+[class*="overflow-y-scroll"],
+[class*="overflow-x-auto"],
+[class*="overflow-x-scroll"] {
+  -webkit-overflow-scrolling: touch;
 }
-*::-webkit-scrollbar-thumb:hover { background: #3a4f5c; }
 
-/* Glass panel utility */
+/* Thin scrollbar on desktop — hidden on touch screens */
+@media (hover: hover) and (pointer: fine) {
+  * { scrollbar-width: thin; scrollbar-color: #2a3d4a transparent; }
+  *::-webkit-scrollbar { width: 6px; height: 6px; }
+  *::-webkit-scrollbar-track { background: transparent; }
+  *::-webkit-scrollbar-thumb {
+    background: #21333f; border-radius: 99px;
+  }
+  *::-webkit-scrollbar-thumb:hover { background: #3a4f5c; }
+}
+
+/* ── Glass utilities ─────────────────────────────────────────────────────── */
 @layer components {
   .glass {
     @apply border border-white/5 bg-white/[0.03] backdrop-blur-xl;
@@ -59,29 +90,65 @@ button, input, textarea, select { font: inherit; }
     @apply border border-white/10 bg-white/[0.06] backdrop-blur-2xl;
     box-shadow: 0 12px 40px -12px rgba(0,0,0,0.6), inset 0 1px 0 0 rgba(255,255,255,0.07);
   }
+
+  /* Safe-area padding helpers — use these on fixed/sticky bottom elements */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .pl-safe {
+    padding-left: env(safe-area-inset-left, 0px);
+  }
+  .pr-safe {
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+  /* Combined safe padding for full-screen overlays */
+  .p-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-left: env(safe-area-inset-left, 0px);
+  }
+
+  /* Minimum 44×44px touch target (Apple HIG / WCAG 2.5.5) */
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
 }
 
-/* Range slider */
+/* ── Range slider ────────────────────────────────────────────────────────── */
 input[type="range"].slider {
   -webkit-appearance: none; appearance: none;
   width: 100%; background: transparent; cursor: pointer;
+  /* Ensure 44px tall touch target on mobile */
+  min-height: 44px;
 }
-input[type="range"].slider::-webkit-slider-runnable-track { height: 4px; border-radius: 99px; }
+input[type="range"].slider::-webkit-slider-runnable-track {
+  height: 4px; border-radius: 99px;
+}
 input[type="range"].slider::-webkit-slider-thumb {
   -webkit-appearance: none; appearance: none;
-  width: 12px; height: 12px; border-radius: 50%; background: #eef3f5;
-  margin-top: -4px; box-shadow: 0 0 0 1px rgba(0,0,0,0.3); transition: transform 0.15s ease;
+  width: 16px; height: 16px; border-radius: 50%; background: #eef3f5;
+  margin-top: -6px; box-shadow: 0 0 0 1px rgba(0,0,0,0.3); transition: transform 0.15s ease;
 }
 input[type="range"].slider:hover::-webkit-slider-thumb { transform: scale(1.25); }
 input[type="range"].slider::-moz-range-track { height: 4px; border-radius: 99px; }
 input[type="range"].slider::-moz-range-thumb {
-  width: 12px; height: 12px; border: none; border-radius: 50%; background: #eef3f5; cursor: pointer;
+  width: 16px; height: 16px; border: none; border-radius: 50%;
+  background: #eef3f5; cursor: pointer;
 }
 
+/* ── Utility overrides ───────────────────────────────────────────────────── */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 .text-balance { text-wrap: balance; }
 
 /* Horizontal scroll rail snap */
-.snap-rail { scroll-snap-type: x mandatory; }
+.snap-rail {
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+}
 .snap-card { scroll-snap-align: start; }

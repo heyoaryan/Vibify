@@ -1,25 +1,29 @@
+import { Bell, Lock, Moon, Music, Shield, Wifi, Zap } from 'lucide-react';
+import { useSettings, type AudioQuality } from '../settings';
+import { NoticeModal } from '../components/NoticeModal';
 import { useState } from 'react';
-import { Lock, Moon, Wifi, Bell, Shield, Music, Code2 } from 'lucide-react';
 
+// ── Reusable toggle switch ────────────────────────────────────────────────────
 function Toggle({ enabled, onChange }: { enabled: boolean; onChange: (v: boolean) => void }) {
   return (
     <button
       role="switch"
       aria-checked={enabled}
       onClick={() => onChange(!enabled)}
-      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full transition-colors duration-200 focus:outline-none ${
-        enabled ? 'bg-brand-400' : 'bg-ink-600'
-      }`}
+      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full
+        transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2
+        focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-900
+        ${enabled ? 'bg-brand-400' : 'bg-ink-600'}`}
     >
       <span
-        className={`inline-block h-5 w-5 translate-y-0.5 rounded-full bg-white shadow transition-transform duration-200 ${
-          enabled ? 'translate-x-5' : 'translate-x-0.5'
-        }`}
+        className={`inline-block h-5 w-5 translate-y-0.5 rounded-full bg-white shadow
+          transition-transform duration-200 ${enabled ? 'translate-x-5' : 'translate-x-0.5'}`}
       />
     </button>
   );
 }
 
+// ── Setting row ───────────────────────────────────────────────────────────────
 function SettingRow({
   icon: Icon,
   label,
@@ -50,81 +54,159 @@ function SettingRow({
   );
 }
 
+// ── Section card ─────────────────────────────────────────────────────────────
 function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section>
       <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-wider text-ink-400">{title}</h2>
-      <div className="overflow-hidden rounded-2xl border border-white/5 bg-white/[0.03] backdrop-blur-xl divide-y divide-white/5">
+      <div className="divide-y divide-white/5 overflow-hidden rounded-2xl border border-white/5 bg-white/[0.03] backdrop-blur-xl">
         {children}
       </div>
     </section>
   );
 }
 
+// ── Quality chip selector ─────────────────────────────────────────────────────
+function QualitySelector({ value, onChange }: { value: AudioQuality; onChange: (q: AudioQuality) => void }) {
+  const options: { q: AudioQuality; label: string }[] = [
+    { q: '96',  label: '96' },
+    { q: '160', label: '160' },
+    { q: '320', label: '320' },
+  ];
+  return (
+    <div className="flex items-center gap-1">
+      {options.map(({ q, label }) => (
+        <button
+          key={q}
+          onClick={() => onChange(q)}
+          className={`rounded-full px-2.5 py-1 text-xs font-semibold transition-colors
+            ${value === q
+              ? 'bg-brand-400 text-ink-950'
+              : 'bg-ink-700 text-ink-300 hover:bg-ink-600 hover:text-ink-50'}`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ── Crossfade selector ────────────────────────────────────────────────────────
+function CrossfadeSelector({ value, onChange }: { value: number; onChange: (n: number) => void }) {
+  const options = [0, 2, 4, 6] as const;
+  return (
+    <div className="flex items-center gap-1">
+      {options.map(n => (
+        <button
+          key={n}
+          onClick={() => onChange(n)}
+          className={`rounded-full px-2.5 py-1 text-xs font-semibold transition-colors
+            ${value === n
+              ? 'bg-brand-400 text-ink-950'
+              : 'bg-ink-700 text-ink-300 hover:bg-ink-600 hover:text-ink-50'}`}
+        >
+          {n === 0 ? 'Off' : `${n}s`}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ── Main ─────────────────────────────────────────────────────────────────────
 export function SettingsView() {
-  const [darkMode, setDarkMode] = useState(true);
-  const [notifications, setNotifications] = useState(true);
-  const [highQuality, setHighQuality] = useState(true);
-  const [dataSaver, setDataSaver] = useState(false);
-  const [autoPlay, setAutoPlay] = useState(true);
-  const [crossfade, setCrossfade] = useState(false);
+  const [settings, update] = useSettings();
+  const [notifModal, setNotifModal] = useState(false);
+
+  // Notifications require browser permission
+  const handleNotifications = async (enabled: boolean) => {
+    if (!enabled) {
+      update({ notifications: false });
+      return;
+    }
+    if (!('Notification' in window)) {
+      setNotifModal(true);
+      return;
+    }
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+      update({ notifications: true });
+      new Notification('Vibify', { body: 'Notifications enabled!', icon: '/icons/icon-192.svg' });
+    } else {
+      update({ notifications: false });
+      setNotifModal(true);
+    }
+  };
 
   return (
     <div className="animate-fade-in space-y-6 px-4 pb-12 lg:px-8">
 
-      {/* Playback */}
+      {/* ── Playback ── */}
       <SectionCard title="Playback">
         <SettingRow
           icon={Music} hue={180}
-          label="High quality audio"
-          description="Stream at 320kbps"
-          right={<Toggle enabled={highQuality} onChange={setHighQuality} />}
+          label="Audio quality"
+          description={settings.dataSaver ? 'Overridden by Data Saver (96 kbps)' : `Streaming at ${settings.audioQuality} kbps`}
+          right={
+            <QualitySelector
+              value={settings.audioQuality}
+              onChange={q => update({ audioQuality: q })}
+            />
+          }
         />
         <SettingRow
-          icon={Music} hue={260}
+          icon={Zap} hue={260}
           label="Autoplay"
-          description="Keep playing similar songs"
-          right={<Toggle enabled={autoPlay} onChange={setAutoPlay} />}
+          description="Keep playing similar songs when queue ends"
+          right={<Toggle enabled={settings.autoPlay} onChange={v => update({ autoPlay: v })} />}
         />
         <SettingRow
           icon={Music} hue={210}
           label="Crossfade"
-          description="Smooth transitions between songs"
-          right={<Toggle enabled={crossfade} onChange={setCrossfade} />}
+          description={settings.crossfadeSecs === 0 ? 'Disabled' : `${settings.crossfadeSecs}s fade between songs`}
+          right={
+            <CrossfadeSelector
+              value={settings.crossfadeSecs}
+              onChange={n => update({ crossfadeSecs: n })}
+            />
+          }
         />
       </SectionCard>
 
-      {/* Appearance */}
+      {/* ── Appearance ── */}
       <SectionCard title="Appearance">
         <SettingRow
           icon={Moon} hue={270}
           label="Dark mode"
-          description="Always on dark theme"
-          right={<Toggle enabled={darkMode} onChange={setDarkMode} />}
+          description="Vibify uses dark theme only"
+          right={
+            <span className="rounded-full bg-brand-500/20 px-2.5 py-1 text-xs font-semibold text-brand-300">
+              Always on
+            </span>
+          }
         />
       </SectionCard>
 
-      {/* Data */}
+      {/* ── Data & Network ── */}
       <SectionCard title="Data & Network">
         <SettingRow
           icon={Wifi} hue={150}
           label="Data saver"
-          description="Lower quality on mobile data"
-          right={<Toggle enabled={dataSaver} onChange={setDataSaver} />}
+          description="Caps streaming to 96 kbps on mobile data"
+          right={<Toggle enabled={settings.dataSaver} onChange={v => update({ dataSaver: v })} />}
         />
       </SectionCard>
 
-      {/* Notifications */}
+      {/* ── Notifications ── */}
       <SectionCard title="Notifications">
         <SettingRow
           icon={Bell} hue={40}
           label="Push notifications"
           description="New releases and recommendations"
-          right={<Toggle enabled={notifications} onChange={setNotifications} />}
+          right={<Toggle enabled={settings.notifications} onChange={handleNotifications} />}
         />
       </SectionCard>
 
-      {/* Privacy */}
+      {/* ── Privacy ── */}
       <section>
         <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-wider text-ink-400">Privacy</h2>
         <div className="overflow-hidden rounded-2xl border border-white/5 bg-white/[0.03] backdrop-blur-xl">
@@ -140,7 +222,7 @@ export function SettingsView() {
               <p className="text-xs leading-relaxed text-ink-400">
                 All your personal information and listening history is fully encrypted end-to-end.
                 We never share, sell, or expose your data to third parties. Your privacy is our
-                highest priority — everything stays between you and ARVINE.
+                highest priority — everything stays between you and Vibify.
               </p>
               <div className="flex items-center gap-2 pt-1">
                 <Lock size={12} className="text-brand-400" />
@@ -151,32 +233,23 @@ export function SettingsView() {
         </div>
       </section>
 
-      {/* About */}
+      {/* ── About ── */}
       <section>
         <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-wider text-ink-400">About</h2>
         <div className="overflow-hidden rounded-2xl border border-white/5 bg-white/[0.03] backdrop-blur-xl">
-          {/* Logo + name */}
-          <div className="flex flex-col items-center gap-3 px-6 py-8 text-center border-b border-white/5">
-            <div className="grid h-16 w-16 place-items-center rounded-2xl bg-gradient-to-br from-brand-400 to-accent-500 shadow-glow">
-              <span className="font-display text-xl font-bold text-ink-950">A</span>
-            </div>
-            <div>
-              <p className="font-display text-xl font-bold text-ink-50">Arsith Tunes</p>
-              <p className="mt-0.5 text-xs text-ink-400">Version 1.0.0</p>
-            </div>
-          </div>
 
-          {/* Studio */}
-          <div className="flex items-center gap-4 px-4 py-4 border-b border-white/5">
-            <div
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-white"
-              style={{ background: 'linear-gradient(135deg, hsl(200 60% 38%), hsl(230 55% 28%))' }}
-            >
-              <Code2 size={17} />
+          {/* Logo + name */}
+          <div className="flex flex-col items-center gap-3 border-b border-white/5 px-6 py-8 text-center">
+            <div className="grid h-16 w-16 place-items-center rounded-2xl bg-gradient-to-br from-brand-400 to-brand-600 shadow-glow">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M9 19V6l12-3v13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-ink-950"/>
+                <circle cx="6" cy="19" r="3" fill="currentColor" className="text-ink-950"/>
+                <circle cx="18" cy="16" r="3" fill="currentColor" className="text-ink-950"/>
+              </svg>
             </div>
             <div>
-              <p className="text-xs text-ink-400">Developed &amp; Designed under</p>
-              <p className="text-sm font-semibold text-ink-50">Arsith Studio</p>
+              <p className="font-display text-xl font-bold text-ink-50">Vibify</p>
+              <p className="mt-0.5 text-xs text-ink-400">Version 1.0.0</p>
             </div>
           </div>
 
@@ -193,6 +266,17 @@ export function SettingsView() {
         </div>
       </section>
 
+      {/* Notification permission denied modal */}
+      <NoticeModal
+        open={notifModal}
+        onClose={() => setNotifModal(false)}
+        title="Notifications blocked"
+      >
+        <p className="text-sm text-ink-300">
+          Your browser has blocked notifications for this site. To enable them, open your
+          browser settings and allow notifications for this origin, then try again.
+        </p>
+      </NoticeModal>
     </div>
   );
 }

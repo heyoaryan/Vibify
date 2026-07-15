@@ -2,6 +2,7 @@ import { ArrowLeft } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useNav } from '../nav';
 import { useCurrentUser } from '../auth';
+import { UserAvatar } from './UserAvatar';
 
 export function TopBar() {
   const { canGoBack, back, view, navigate } = useNav();
@@ -20,25 +21,31 @@ export function TopBar() {
 
   useEffect(() => {
     if (!dropdownOpen) return;
-    const h = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node))
+
+    // mousedown for desktop, touchstart for iOS Safari
+    const close = (e: MouseEvent | TouchEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setDropdownOpen(false);
+      }
     };
-    document.addEventListener('mousedown', h);
-    return () => document.removeEventListener('mousedown', h);
+
+    document.addEventListener('mousedown', close);
+    document.addEventListener('touchstart', close, { passive: true });
+    return () => {
+      document.removeEventListener('mousedown', close);
+      document.removeEventListener('touchstart', close);
+    };
   }, [dropdownOpen]);
 
   return (
-    <header className="sticky top-0 z-20 flex items-center gap-2 px-4 py-3
-      sm:px-6 sm:py-4
-      lg:px-8 lg:py-5">
+    <header className="sticky top-0 z-20 flex items-center gap-2 px-4 py-3 sm:px-6 sm:py-4 lg:px-8 lg:py-5">
 
-      {/* Back — desktop only */}
+      {/* Back — desktop only, 44×44 touch target */}
       <button
         onClick={back}
         disabled={!canGoBack}
         aria-label="Go back"
-        className="hidden lg:grid h-9 w-9 shrink-0 place-items-center rounded-xl
+        className="hidden lg:grid h-11 w-11 shrink-0 place-items-center rounded-xl
           bg-ink-800/60 text-ink-100 transition-colors
           enabled:hover:bg-ink-700 disabled:opacity-30"
       >
@@ -63,26 +70,28 @@ export function TopBar() {
 
       {/* Mobile / tablet: account avatar → dropdown */}
       <div ref={dropdownRef} className="relative lg:hidden">
+        {/* Avatar — 44×44 touch target (up from the old 32/36px) */}
         <button
           aria-label="Account menu"
+          aria-expanded={dropdownOpen}
+          aria-haspopup="true"
           onClick={() => setDropdownOpen(o => !o)}
-          className="grid h-8 w-8 place-items-center rounded-full
-            bg-gradient-to-br from-brand-400 to-accent-500
-            text-xs font-bold text-ink-950 shadow-glow
-            transition-transform hover:scale-105 active:scale-95
-            sm:h-9 sm:w-9"
+          className="grid h-11 w-11 place-items-center rounded-full transition-transform hover:scale-105 active:scale-95"
         >
-          {user.name.charAt(0) || 'G'}
+          <UserAvatar size={44} radius="rounded-full" />
         </button>
 
         {dropdownOpen && (
-          <div className="absolute right-0 top-10 w-40 overflow-hidden rounded-2xl
-            border border-white/10 bg-ink-850/95 shadow-2xl backdrop-blur-xl
-            animate-fade-in sm:top-11">
-
+          <div
+            role="menu"
+            className="absolute right-0 top-12 w-44 overflow-hidden rounded-2xl
+              border border-white/10 bg-ink-850/95 shadow-2xl backdrop-blur-xl
+              animate-fade-in"
+          >
             <button
+              role="menuitem"
               onClick={() => { setDropdownOpen(false); navigate({ name: 'account' }); }}
-              className="flex w-full items-center px-4 py-3.5 text-left transition-colors hover:bg-white/5"
+              className="flex w-full items-center px-4 py-3.5 text-left transition-colors hover:bg-white/5 active:bg-white/10"
             >
               <span className="text-sm font-semibold text-ink-50">Account</span>
             </button>
@@ -90,8 +99,9 @@ export function TopBar() {
             <div className="mx-3 h-px bg-white/5" />
 
             <button
+              role="menuitem"
               onClick={() => { setDropdownOpen(false); navigate({ name: 'settings' }); }}
-              className="flex w-full items-center px-4 py-3.5 text-left transition-colors hover:bg-white/5"
+              className="flex w-full items-center px-4 py-3.5 text-left transition-colors hover:bg-white/5 active:bg-white/10"
             >
               <span className="text-sm font-semibold text-ink-50">Settings</span>
             </button>

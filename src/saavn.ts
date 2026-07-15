@@ -8,6 +8,7 @@
  */
 
 import type { Song } from './types';
+import { getSettings } from './settings';
 
 // In dev, Vite proxies /jiosaavn/* → https://www.jiosaavn.com/*
 // In production, calls go directly (same-origin CORS not an issue for Saavn CDN)
@@ -237,9 +238,10 @@ function mapSong(raw: JioDetailSong): Song | null {
   try {
     const base = decryptUrl(encUrl);
     if (!base) return null;
-    // Prefer 160kbps; fall back to 96
-    const want320 = raw['320kbps'] === 'true' || raw['320kbps'] === true;
-    audioUrl = qualityUrl(base, want320 ? '160' : '96');
+    // Use quality from global settings; dataSaver caps at 96kbps
+    const { audioQuality, dataSaver } = getSettings();
+    const quality = dataSaver ? '96' : audioQuality;
+    audioUrl = qualityUrl(base, quality);
   } catch {
     return null;
   }
@@ -290,9 +292,28 @@ export async function searchSongs(query: string, limit = 20): Promise<Song[]> {
 
     const detailJson: Record<string, JioDetailSong> = await detailRes.json();
 
-    return Object.values(detailJson)
+    const songs = Object.values(detailJson)
       .map(s => mapSong(s))
       .filter((s): s is Song => s !== null && !!s.src);
+
+    // Deduplicate by ID first, then by (normalized title + artist) to catch
+    // same song returned under different IDs
+    const seenIds = new Set<string>();
+    const seenTitleArtist = new Set<string>();
+    const unique: Song[] = [];
+
+    for (const song of songs) {
+      if (seenIds.has(song.id)) continue;
+
+      const key = `${song.title.toLowerCase().trim()}|${song.artist.toLowerCase().trim()}`;
+      if (seenTitleArtist.has(key)) continue;
+
+      seenIds.add(song.id);
+      seenTitleArtist.add(key);
+      unique.push(song);
+    }
+
+    return unique;
 
   } catch (error) {
     console.error('searchSongs error:', error);

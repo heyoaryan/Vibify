@@ -16,6 +16,20 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/jiosaavn/, ''),
         secure: true,
       },
+      // Proxy lrclib.net to avoid CORS blocks in the browser
+      '/lrclib': {
+        target: 'https://lrclib.net',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/lrclib/, ''),
+        secure: true,
+      },
+      // Proxy lyrics.ovh to avoid CORS blocks in the browser
+      '/lyricsovh': {
+        target: 'https://api.lyrics.ovh',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/lyricsovh/, ''),
+        secure: true,
+      },
     },
   },
 });

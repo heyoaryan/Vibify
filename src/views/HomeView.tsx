@@ -1,12 +1,12 @@
 import { Clock, Flame, Play, Sparkles } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { useCurrentUser } from '../auth';
+import { useRecentlyPlayed } from '../history';
 
 import { usePlayer } from '../player';
 import type { Song } from '../types';
 import { Artwork } from '../components/Artwork';
 import { SongRowCard } from '../components/Cards';
-import { getTrendingSongs, getNewReleases, getArtistSongs, searchSongs } from '../saavn';
+import { getTrendingSongs, getNewReleases, getArtistSongs, searchSongs, getSongDetails } from '../saavn';
 
 function greeting(): string {
   const h = new Date().getHours();
@@ -28,17 +28,6 @@ function SkeletonRow() {
   );
 }
 
-function SkeletonSquare() {
-  return (
-    <div className="w-32 shrink-0 sm:w-36 lg:w-40">
-      <div className="aspect-square w-full animate-pulse rounded-2xl bg-ink-700" />
-      <div className="mt-2 space-y-1.5">
-        <div className="h-3 w-3/4 animate-pulse rounded bg-ink-700" />
-        <div className="h-2.5 w-1/2 animate-pulse rounded bg-ink-800" />
-      </div>
-    </div>
-  );
-}
 
 function SkeletonAlbum() {
   return (
@@ -69,10 +58,9 @@ const MOODS = [
 
 export function HomeView() {
   const { playSongs, current, isPlaying, togglePlay } = usePlayer();
-  const user = useCurrentUser();
+  const historyPlays = useRecentlyPlayed();
 
   const [quickPicks, setQuickPicks]   = useState<Song[]>([]);
-  const [recent, setRecent]           = useState<Song[]>([]);
   const [trending, setTrending]       = useState<Song[]>([]);
   const [releases, setReleases]       = useState<Song[]>([]);
   const [madeForYou, setMadeForYou]   = useState<Song[]>([]);
@@ -85,17 +73,12 @@ export function HomeView() {
       getTrendingSongs(20),
       delay(250).then(() => getNewReleases(20)),
       delay(500).then(() => getArtistSongs('arijit singh', 8)),
-      delay(750).then(() => getArtistSongs('vishal mishra', 6)),
-      delay(1000).then(() => searchSongs('chill hindi 2025', 10)),
-    ]).then(([trendingRaw, releasesRaw, arijitRaw, vishalRaw, chillRaw]) => {
+      delay(750).then(() => searchSongs('chill hindi 2025', 10)),
+    ]).then(([trendingRaw, releasesRaw, arijitRaw, chillRaw]) => {
       const used = new Set<string>();
 
       const picks = dedupe(trendingRaw).slice(0, 6);
       picks.forEach(s => used.add(s.id));
-
-      const recentPool = dedupe([...arijitRaw, ...vishalRaw]).filter(s => !used.has(s.id));
-      const recentSongs = recentPool.slice(0, 10);
-      recentSongs.forEach(s => used.add(s.id));
 
       const trendingF = dedupe(trendingRaw).filter(s => !used.has(s.id));
       trendingF.forEach(s => used.add(s.id));
@@ -109,7 +92,6 @@ export function HomeView() {
       const spot = arijitRaw.find(s => !used.has(s.id)) ?? arijitRaw[0] ?? trendingRaw[0] ?? null;
 
       setQuickPicks(picks);
-      setRecent(recentSongs);
       setTrending(trendingF);
       setReleases(releasesF);
       setMadeForYou(mfy);
@@ -121,26 +103,43 @@ export function HomeView() {
     });
   }, []);
 
-  // If the logged-in user has recentActivity, prefer that over fetched `recent`.
-  useEffect(() => {
-    const userRecent = user.recentActivity;
-    if (userRecent && userRecent.length) {
-      const mapped = userRecent.map((it: any, i: number) => ({
-        id: it.id || `user-recent-${i}`,
-        title: it.title || it.name || 'Unknown',
-        artist: it.artist || '',
-        album: it.album || '',
-        imageUrl: it.imageUrl || '',
-        hue: it.hue ?? 200,
-        hue2: it.hue2 ?? 240,
-        duration: it.duration ?? 0,
-      } as Song));
-      setRecent(mapped);
-    }
-  }, []);
+  // Derive recently-played songs directly from play history — no separate state needed.
+  const recentSongs: Song[] = historyPlays.map((it) => ({
+    id: it.songId,
+    title: it.title,
+    artist: it.artist,
+    album: '',
+    year: 0,
+    duration: 0,
+    hue: it.hue,
+    hue2: (it.hue + 40) % 360,
+    src: '',
+    genre: '',
+    imageUrl: it.imageUrl,
+  }));
+
+  const [fetchingId, setFetchingId] = useState<string | null>(null);
 
   const play = (s: Song, list: Song[]) => {
     if (current?.id === s.id) { togglePlay(); return; }
+    // Songs from recently-played history have no src — fetch fresh details first
+    if (!s.src) {
+      setFetchingId(s.id);
+      getSongDetails(s.id)
+        .then(fresh => {
+          if (fresh?.src) {
+            playSongs([fresh], fresh.id);
+          } else {
+            // Fallback: search by title + artist and play first result
+            return searchSongs(`${s.title} ${s.artist}`, 5).then(results => {
+              const match = results[0];
+              if (match) playSongs(results, match.id);
+            });
+          }
+        })
+        .finally(() => setFetchingId(null));
+      return;
+    }
     playSongs(list, s.id);
   };
 
@@ -257,53 +256,55 @@ export function HomeView() {
           <Clock size={16} className="text-ink-400" />
           <h2 className="font-display text-lg font-bold text-ink-50 sm:text-xl">Recently played</h2>
         </div>
-        <div className="no-scrollbar snap-rail flex gap-3 overflow-x-auto pb-2 sm:gap-4">
-          {loading
-            ? Array.from({ length: 6 }).map((_, i) => <SkeletonSquare key={i} />)
-            : recent.map(s => {
-                const isCurrent = current?.id === s.id;
-                const isThisPlaying = isCurrent && isPlaying;
-                return (
-                  <button
-                    key={s.id}
-                    onClick={() => play(s, recent)}
-                    className="snap-card group w-32 shrink-0 text-left sm:w-36 lg:w-40"
-                  >
-                    {/* Square artwork */}
-                    <div className="relative aspect-square w-full overflow-hidden rounded-2xl">
-                      <Artwork title={s.title} hue={s.hue} hue2={s.hue2} imageUrl={s.imageUrl}
-                        className="h-full w-full transition-transform duration-300 group-hover:scale-105"
-                        rounded="rounded-2xl" />
-                      {/* play overlay */}
-                      <div className={`absolute inset-0 flex items-center justify-center rounded-2xl transition-all duration-200
-                        ${isThisPlaying ? 'bg-black/40' : 'bg-black/0 group-hover:bg-black/35'}`}>
-                        {isThisPlaying
-                          ? (
-                            <div className="flex items-end gap-[3px] h-5">
-                              {[0.6, 1, 0.4, 0.8].map((h, j) => (
-                                <span key={j} className="w-[2.5px] rounded-full bg-brand-400 animate-bar-rise"
-                                  style={{ height: `${h * 100}%`, animationDelay: `${j * 0.15}s` }} />
-                              ))}
-                            </div>
-                          ) : (
-                            <span className="grid h-10 w-10 place-items-center rounded-full bg-white/90 text-ink-950
-                              opacity-0 shadow-lg transition-all duration-200 group-hover:opacity-100 scale-75 group-hover:scale-100">
-                              <Play size={16} className="fill-ink-950 translate-x-[1px]" />
-                            </span>
-                          )}
-                      </div>
+        {recentSongs.length === 0 ? (
+          <p className="text-sm text-ink-400">Nothing yet — play a song and it'll show up here.</p>
+        ) : (
+          <div className="no-scrollbar snap-rail flex gap-3 overflow-x-auto pb-2 sm:gap-4">
+            {recentSongs.map(s => {
+              const isCurrent = current?.id === s.id;
+              const isThisPlaying = isCurrent && isPlaying;
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => play(s, recentSongs)}
+                  className="snap-card group w-32 shrink-0 text-left sm:w-36 lg:w-40"
+                >
+                  {/* Square artwork */}
+                  <div className="relative aspect-square w-full overflow-hidden rounded-2xl">
+                    <Artwork title={s.title} hue={s.hue} hue2={s.hue2} imageUrl={s.imageUrl}
+                      className="h-full w-full transition-transform duration-300 group-hover:scale-105"
+                      rounded="rounded-2xl" />
+                    {/* play overlay */}
+                    <div className={`absolute inset-0 flex items-center justify-center rounded-2xl transition-all duration-200
+                      ${isThisPlaying ? 'bg-black/40' : 'bg-black/0 group-hover:bg-black/35'}`}>
+                      {isThisPlaying
+                        ? (
+                          <div className="flex items-end gap-[3px] h-5">
+                            {[0.6, 1, 0.4, 0.8].map((h, j) => (
+                              <span key={j} className="w-[2.5px] rounded-full bg-brand-400 animate-bar-rise"
+                                style={{ height: `${h * 100}%`, animationDelay: `${j * 0.15}s` }} />
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="grid h-10 w-10 place-items-center rounded-full bg-white/90 text-ink-950
+                            opacity-0 shadow-lg transition-all duration-200 group-hover:opacity-100 scale-75 group-hover:scale-100">
+                            <Play size={16} className="fill-ink-950 translate-x-[1px]" />
+                          </span>
+                        )}
                     </div>
-                    {/* text below */}
-                    <div className="mt-2.5 px-0.5">
-                      <p className={`line-clamp-2 text-xs font-semibold leading-snug sm:text-sm ${isCurrent ? 'text-brand-400' : 'text-ink-50'}`}>
-                        {s.title}
-                      </p>
-                      <p className="truncate text-[10px] text-ink-300 mt-0.5 sm:text-xs">{s.artist}</p>
-                    </div>
-                  </button>
-                );
-              })}
-        </div>
+                  </div>
+                  {/* text below */}
+                  <div className="mt-2.5 px-0.5">
+                    <p className={`line-clamp-2 text-xs font-semibold leading-snug sm:text-sm ${isCurrent ? 'text-brand-400' : 'text-ink-50'}`}>
+                      {s.title}
+                    </p>
+                    <p className="truncate text-[10px] text-ink-300 mt-0.5 sm:text-xs">{s.artist}</p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </section>
 
       {/* ── Trending now ── */}

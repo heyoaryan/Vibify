@@ -27,13 +27,17 @@ export function SeekSlider({
     [onSeek],
   );
 
-  const handlePointerUp = useCallback(() => {
+  // Commit seek on pointer/mouse/touch end — covers all platforms:
+  // - onPointerUp: modern browsers (Chrome, Firefox, Safari 13.1+)
+  // - onMouseUp: older Safari desktop fallback
+  // - onTouchEnd: Android / iOS when pointer events are absent
+  const commitSeek = useCallback(() => {
     if (seekTimeout.current) clearTimeout(seekTimeout.current);
     if (dragValue != null) onSeek(dragValue);
     setDragValue(null);
   }, [dragValue, onSeek]);
 
-  const handlePointerCancel = useCallback(() => {
+  const cancelSeek = useCallback(() => {
     if (seekTimeout.current) clearTimeout(seekTimeout.current);
     setDragValue(null);
   }, []);
@@ -41,8 +45,9 @@ export function SeekSlider({
   useEffect(() => () => { if (seekTimeout.current) clearTimeout(seekTimeout.current); }, []);
 
   return (
-    <div className="group relative flex items-center py-1">
-      {/* Invisible native range input — handles all pointer events */}
+    // py-3 gives a 44px-tall tap region even though the visible bar is 4px
+    <div className="group relative flex items-center py-3">
+      {/* Native range input — invisible but handles all pointer/touch events */}
       <input
         type="range"
         min={0}
@@ -51,16 +56,17 @@ export function SeekSlider({
         value={displayed}
         aria-label={ariaLabel}
         onChange={handleChange}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerCancel}
+        onPointerUp={commitSeek}
+        onMouseUp={commitSeek}
+        onTouchEnd={commitSeek}
+        onPointerCancel={cancelSeek}
         className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
+        style={{ touchAction: 'none' }}
       />
 
-      {/* Single track bar */}
-      <div className="pointer-events-none relative h-1 w-full overflow-hidden rounded-full transition-all duration-150 group-hover:h-1.5">
-        {/* Background */}
+      {/* Visual track */}
+      <div className="pointer-events-none relative h-1 w-full overflow-hidden rounded-full transition-all duration-150 group-hover:h-[5px]">
         <div className="absolute inset-0 rounded-full bg-white/10" />
-        {/* Filled portion */}
         <div
           className="absolute left-0 top-0 h-full rounded-full"
           style={{
@@ -70,9 +76,9 @@ export function SeekSlider({
         />
       </div>
 
-      {/* Thumb dot — appears on hover */}
+      {/* Thumb dot — visible on hover/drag */}
       <div
-        className="pointer-events-none absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white opacity-0 shadow-md transition-opacity duration-150 group-hover:opacity-100"
+        className="pointer-events-none absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white opacity-0 shadow-md transition-opacity duration-150 group-hover:opacity-100"
         style={{ left: `${pct}%` }}
       />
     </div>
@@ -87,8 +93,10 @@ export function VolumeSlider({
   onChange: (v: number) => void;
 }) {
   const pct = value * 100;
+
   return (
-    <div className="group relative flex w-24 items-center py-1">
+    // py-3 → 44px touch target height
+    <div className="group relative flex w-24 items-center py-3">
       <input
         type="range"
         min={0}
@@ -98,10 +106,11 @@ export function VolumeSlider({
         aria-label="Volume"
         onChange={(e) => onChange(Number(e.target.value))}
         className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
+        style={{ touchAction: 'none' }}
       />
 
-      {/* Single track bar */}
-      <div className="pointer-events-none relative h-1 w-full overflow-hidden rounded-full transition-all duration-150 group-hover:h-1.5">
+      {/* Visual track */}
+      <div className="pointer-events-none relative h-1 w-full overflow-hidden rounded-full transition-all duration-150 group-hover:h-[5px]">
         <div className="absolute inset-0 rounded-full bg-white/10" />
         <div
           className="absolute left-0 top-0 h-full rounded-full bg-white/80"
@@ -111,7 +120,7 @@ export function VolumeSlider({
 
       {/* Thumb dot */}
       <div
-        className="pointer-events-none absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white opacity-0 shadow transition-opacity group-hover:opacity-100"
+        className="pointer-events-none absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white opacity-0 shadow transition-opacity group-hover:opacity-100"
         style={{ left: `${pct}%` }}
       />
     </div>

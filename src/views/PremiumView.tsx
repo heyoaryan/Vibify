@@ -111,7 +111,7 @@ export function PremiumView() {
         <div className="relative">
           <span className="inline-flex items-center gap-2 rounded-full border border-amber-400/30 bg-amber-400/10 px-4 py-1.5 text-sm font-semibold text-amber-300">
             <Crown size={14} className="fill-amber-300" />
-            Arsith Tunes Premium
+            Vibify Premium
           </span>
           <h1 className="mt-3 font-display text-3xl font-bold text-ink-50 lg:text-4xl">
             Your music, no limits

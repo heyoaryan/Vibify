@@ -1,5 +1,6 @@
-import { Disc3, Home, Library, Search, Settings } from 'lucide-react';
+import { Home, Library, Search, Settings } from 'lucide-react';
 import { useCurrentUser } from '../auth';
+import { UserAvatar } from './UserAvatar';
 
 import { useNav } from '../nav';
 import type { NavSection } from '../types';
@@ -36,12 +37,16 @@ export function IconRail({
     <div className="flex h-full flex-col gap-1">
       {/* Brand */}
       <div className={`mb-4 flex items-center gap-3 ${expanded ? 'px-3 pt-3' : 'justify-center pt-3'}`}>
-        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-400 text-ink-950 shadow-glow transition-transform hover:scale-105">
-          <Disc3 size={22} className="fill-ink-950" />
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-brand-400 to-brand-600 text-ink-950 shadow-glow transition-transform hover:scale-105">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M9 19V6l12-3v13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            <circle cx="6" cy="19" r="3" fill="currentColor"/>
+            <circle cx="18" cy="16" r="3" fill="currentColor"/>
+          </svg>
         </span>
         {expanded && (
           <span className="font-display text-xl font-bold tracking-tight text-ink-50">
-            Arsith Tunes
+            Vibify
           </span>
         )}
       </div>
@@ -81,9 +86,7 @@ export function IconRail({
           onClick={() => { navigate({ name: 'account' }); onClose?.(); }}
           className={`flex w-full items-center gap-3 rounded-xl p-2 transition-colors hover:bg-ink-700/50 ${expanded ? '' : 'justify-center'}`}
         >
-          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-gradient-to-br from-brand-400 to-accent-500 text-xs font-bold text-ink-950">
-            {user.name.charAt(0) || 'G'}
-          </span>
+          <UserAvatar size={32} radius="rounded-full" />
           {expanded && <span className="text-sm font-medium text-ink-100">{user.name}</span>}
         </button>
 

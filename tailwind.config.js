@@ -63,6 +63,14 @@ export default {
           '0%': { opacity: '0', transform: 'translateY(100%)' },
           '100%': { opacity: '1', transform: 'translateY(0)' },
         },
+        'sheet-up': {
+          '0%': { transform: 'translateY(100%)' },
+          '100%': { transform: 'translateY(0)' },
+        },
+        'sheet-in': {
+          '0%': { opacity: '0', transform: 'scale(0.95) translateY(8px)' },
+          '100%': { opacity: '1', transform: 'scale(1) translateY(0)' },
+        },
         'slide-right': {
           '0%': { opacity: '0', transform: 'translateX(-100%)' },
           '100%': { opacity: '1', transform: 'translateX(0)' },
@@ -82,16 +90,36 @@ export default {
           '0%,100%': { opacity: '0.35' },
           '50%': { opacity: '0.6' },
         },
+        // Lyrics line: slides in from below with fade
+        'lyric-enter': {
+          '0%': { opacity: '0', transform: 'translateY(28px) scale(0.96)' },
+          '100%': { opacity: '1', transform: 'translateY(0) scale(1)' },
+        },
+        // Active line glow pulse
+        'lyric-pulse': {
+          '0%,100%': { textShadow: '0 0 20px rgba(20,196,173,0.0)' },
+          '50%': { textShadow: '0 0 20px rgba(20,196,173,0.5)' },
+        },
+        // Typing cursor blink
+        'cursor-blink': {
+          '0%,100%': { opacity: '1' },
+          '50%': { opacity: '0' },
+        },
       },
       animation: {
         'fade-up': 'fade-up 0.5s cubic-bezier(0.22,1,0.36,1) both',
         'fade-in': 'fade-in 0.4s ease both',
         'slide-up': 'slide-up 0.35s cubic-bezier(0.22,1,0.36,1) both',
+        'sheet-up': 'sheet-up 0.38s cubic-bezier(0.22,1,0.36,1) both',
+        'sheet-in': 'sheet-in 0.28s cubic-bezier(0.22,1,0.36,1) both',
         'slide-right': 'slide-right 0.3s cubic-bezier(0.22,1,0.36,1) both',
         'scale-in': 'scale-in 0.3s cubic-bezier(0.22,1,0.36,1) both',
         'spin-vinyl': 'spin-vinyl 20s linear infinite',
         'bar-rise': 'bar-rise 0.9s ease-in-out infinite',
         'float-glow': 'float-glow 4s ease-in-out infinite',
+        'lyric-enter': 'lyric-enter 0.55s cubic-bezier(0.22,1,0.36,1) both',
+        'lyric-pulse': 'lyric-pulse 3s ease-in-out infinite',
+        'cursor-blink': 'cursor-blink 1s step-end infinite',
       },
     },
   },

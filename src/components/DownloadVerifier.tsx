@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 
 function toBase64(buffer: ArrayBuffer) {
   const bytes = new Uint8Array(buffer);

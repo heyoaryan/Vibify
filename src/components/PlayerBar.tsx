@@ -2,9 +2,9 @@ import {
   Heart, Maximize2, Pause, Play,
   Repeat, Repeat1, Shuffle, SkipBack, SkipForward,
 } from 'lucide-react';
-import { useState } from 'react';
 import { usePlayer } from '../player';
 import { useNav } from '../nav';
+import { useLikes } from '../likes';
 import { Artwork } from './Artwork';
 
 export function PlayerBar() {
@@ -13,9 +13,9 @@ export function PlayerBar() {
     togglePlay, next, prev, cycleRepeat, toggleShuffle,
   } = usePlayer();
   const { navigate } = useNav();
-  const [liked, setLiked] = useState<Record<string, boolean>>({});
+  const { isLiked, toggle: toggleLike } = useLikes();
 
-  const isLiked = current ? liked[current.id] : false;
+  const songLiked = current ? isLiked(current.id) : false;
   const repeatActive = repeat !== 'off';
 
   return (
@@ -30,18 +30,19 @@ export function PlayerBar() {
         </div>
       )}
 
-      <div className="glass-strong relative flex items-center gap-2 rounded-xl px-2 py-2
-        sm:gap-3 sm:rounded-2xl sm:px-3 sm:py-2.5
+      <div className="glass-strong relative flex items-center gap-2 rounded-xl px-2 py-1.5
+        sm:gap-3 sm:rounded-2xl sm:px-3 sm:py-2
         lg:px-4">
 
         {/* Left: artwork + info */}
         <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
           {current ? (
             <>
+              {/* Artwork tap — 44×44 min touch target */}
               <button
                 onClick={() => navigate({ name: 'nowplaying' })}
                 aria-label="Open now playing"
-                className="group relative shrink-0"
+                className="group relative shrink-0 min-h-[44px] min-w-[44px] flex items-center justify-center"
               >
                 <Artwork
                   title={current.title}
@@ -56,16 +57,18 @@ export function PlayerBar() {
                 </div>
               </button>
               <div className="min-w-0">
-                <p className="line-clamp-2 text-xs font-semibold leading-snug text-ink-50 sm:text-sm">{current.title}</p>
+                <p className="line-clamp-2 text-xs font-semibold leading-snug text-ink-50 sm:text-sm">
+                  {current.title}
+                </p>
                 <p className="truncate text-[10px] text-ink-300 sm:text-xs">{current.artist}</p>
               </div>
               <button
-                onClick={() => current && setLiked(l => ({ ...l, [current.id]: !l[current.id] }))}
-                aria-label={isLiked ? 'Unlike' : 'Like'}
+                onClick={() => current && toggleLike(current)}
+                aria-label={songLiked ? 'Unlike' : 'Like'}
                 className={`ml-1 hidden shrink-0 rounded-full p-1.5 transition-colors md:block
-                  ${isLiked ? 'text-accent-400' : 'text-ink-300 hover:text-ink-50'}`}
+                  ${songLiked ? 'text-accent-400' : 'text-ink-300 hover:text-ink-50'}`}
               >
-                <Heart size={15} className={isLiked ? 'fill-accent-400' : ''} />
+                <Heart size={15} className={songLiked ? 'fill-accent-400' : ''} />
               </button>
             </>
           ) : (
@@ -79,46 +82,58 @@ export function PlayerBar() {
           )}
         </div>
 
-        {/* Center: transport */}
-        <div className="flex items-center gap-1 sm:gap-2">
+        {/* Center: transport controls */}
+        <div className="flex items-center gap-0 sm:gap-1">
+          {/* Shuffle — hidden on mobile */}
           <button
             onClick={toggleShuffle}
             aria-label="Shuffle"
-            className={`hidden rounded-full p-1 transition-colors sm:block
+            className={`hidden rounded-full p-2 transition-colors sm:block
               ${shuffle ? 'text-brand-400' : 'text-ink-300 hover:text-ink-50'}`}
           >
             <Shuffle size={15} />
           </button>
-          <button onClick={prev} aria-label="Previous"
-            className="rounded-full p-1 text-ink-100 transition-colors hover:text-ink-50 sm:p-1.5">
+
+          {/* Previous — 44×44 touch target */}
+          <button
+            onClick={prev}
+            aria-label="Previous"
+            className="grid h-11 w-11 place-items-center rounded-full text-ink-100 transition-colors hover:text-ink-50 active:scale-95"
+          >
             <SkipBack size={18} className="fill-current sm:hidden" />
             <SkipBack size={20} className="fill-current hidden sm:block" />
           </button>
+
+          {/* Play / Pause — 44×44 on mobile, 40×40 on sm+ (already larger) */}
           <button
             onClick={togglePlay}
             aria-label={isPlaying ? 'Pause' : 'Play'}
-            className="grid h-8 w-8 place-items-center rounded-full bg-ink-50 text-ink-950
+            className="grid h-11 w-11 place-items-center rounded-full bg-ink-50 text-ink-950
               transition-transform hover:scale-105 active:scale-95 sm:h-9 sm:w-9"
           >
             {isPlaying
-              ? <Pause size={15} className="fill-ink-950 sm:hidden" />
-              : <Play size={15} className="fill-ink-950 translate-x-[1px] sm:hidden" />}
-            {isPlaying
-              ? <Pause size={17} className="fill-ink-950 hidden sm:block" />
-              : <Play size={17} className="fill-ink-950 translate-x-[1px] hidden sm:block" />}
+              ? <Pause size={17} className="fill-ink-950" />
+              : <Play size={17} className="fill-ink-950 translate-x-[1px]" />}
           </button>
-          <button onClick={next} aria-label="Next"
-            className="rounded-full p-1 text-ink-100 transition-colors hover:text-ink-50 sm:p-1.5">
+
+          {/* Next — 44×44 touch target */}
+          <button
+            onClick={next}
+            aria-label="Next"
+            className="grid h-11 w-11 place-items-center rounded-full text-ink-100 transition-colors hover:text-ink-50 active:scale-95"
+          >
             <SkipForward size={18} className="fill-current sm:hidden" />
             <SkipForward size={20} className="fill-current hidden sm:block" />
           </button>
+
+          {/* Repeat — hidden on mobile */}
           <button
             onClick={cycleRepeat}
             aria-label="Repeat"
-            className={`hidden rounded-full p-1 transition-colors sm:block
+            className={`hidden rounded-full p-2 transition-colors sm:block
               ${repeatActive ? 'text-brand-400' : 'text-ink-300 hover:text-ink-50'}`}
           >
-            {(() => { const I = repeat === 'one' ? Repeat1 : Repeat; return <I size={15} />; })()}
+            {repeat === 'one' ? <Repeat1 size={15} /> : <Repeat size={15} />}
           </button>
         </div>
 
