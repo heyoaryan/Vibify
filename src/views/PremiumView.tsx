@@ -14,6 +14,7 @@ import {
   TrendingUp,
   Zap,
 } from 'lucide-react';
+import { memo } from 'react';
 
 /* ─── Mock listening stats (would come from user context in a real app) ─── */
 const stats = [
@@ -102,7 +103,7 @@ const plans = [
 ];
 
 /* ─── Component ─────────────────────────────────────────────────────────── */
-export function PremiumView() {
+export const PremiumView = memo(function PremiumView() {
   return (
     <div className="animate-fade-in min-h-screen px-4 pb-28 pt-4 lg:px-8">
 
@@ -294,4 +295,4 @@ export function PremiumView() {
       </p>
     </div>
   );
-}
+});

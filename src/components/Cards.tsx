@@ -1,4 +1,5 @@
 import { Play, Plus } from 'lucide-react';
+import { memo } from 'react';
 
 import type { Playlist, Song } from '../types';
 import { usePlayer } from '../player';
@@ -6,7 +7,7 @@ import { useNav } from '../nav';
 import { songsByIds } from '../lib';
 import { Artwork } from './Artwork';
 
-export function PlaylistCard({ playlist }: { playlist: Playlist }) {
+export const PlaylistCard = memo(function PlaylistCard({ playlist }: { playlist: Playlist }) {
   const { playSongs, current, isPlaying, togglePlay } = usePlayer();
   const { navigate } = useNav();
 
@@ -48,9 +49,9 @@ export function PlaylistCard({ playlist }: { playlist: Playlist }) {
       </div>
     </button>
   );
-}
+});
 
-export function SongRowCard({
+export const SongRowCard = memo(function SongRowCard({
   song,
   onPlay,
   isCurrent,
@@ -77,7 +78,7 @@ export function SongRowCard({
         <p className="truncate text-xs text-ink-300 mt-0.5">{song.artist}</p>
       </div>
       {isCurrent && isPlaying && (
-        <div className="flex items-end gap-[2px] h-4">
+        <div className="flex items-end gap-[2px] h-4 shrink-0">
           {[0.6, 1, 0.4].map((h, i) => (
             <span key={i} className="w-[2px] rounded-full bg-brand-400 animate-bar-rise" style={{ height: `${h * 100}%`, animationDelay: `${i * 0.2}s` }} />
           ))}
@@ -85,9 +86,9 @@ export function SongRowCard({
       )}
     </button>
   );
-}
+});
 
-export function PlayNextButton({ song }: { song: Song }) {
+export const PlayNextButton = memo(function PlayNextButton({ song }: { song: Song }) {
   const { playNext } = usePlayer();
   return (
     <button
@@ -98,4 +99,4 @@ export function PlayNextButton({ song }: { song: Song }) {
       <Plus size={16} />
     </button>
   );
-}
+});

@@ -1,12 +1,12 @@
 import { Clock, Heart, MoreHorizontal, Pause, Play, Shuffle } from 'lucide-react';
-import { useState } from 'react';
+import { memo, useState } from 'react';
 
 import { playlistById, songsByIds, formatTime, heroGradient } from '../lib';
 import { usePlayer } from '../player';
 import { useNav } from '../nav';
 import { Artwork } from '../components/Artwork';
 
-export function PlaylistView({ id }: { id: string }) {
+export const PlaylistView = memo(function PlaylistView({ id }: { id: string }) {
   const playlist = playlistById(id);
   const { playSongs, current, isPlaying, togglePlay, toggleShuffle, shuffle } = usePlayer();
   const { navigate } = useNav();
@@ -156,4 +156,4 @@ export function PlaylistView({ id }: { id: string }) {
       </div>
     </div>
   );
-}
+});

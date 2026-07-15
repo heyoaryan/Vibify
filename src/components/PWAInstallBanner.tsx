@@ -23,6 +23,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Download, Share, X, Plus } from 'lucide-react';
+import { VibifyLogo } from './VibifyLogo';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -134,13 +135,7 @@ export function PWAInstallBanner({ standalone = false }: { standalone?: boolean 
         <div className="rounded-2xl border border-white/10 bg-ink-900/95 p-4 shadow-2xl shadow-black/60 backdrop-blur-xl">
           {/* Header */}
           <div className="mb-3 flex items-center gap-3">
-            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-brand-400 to-brand-600 shadow-glow">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M9 19V6l12-3v13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-ink-950"/>
-                <circle cx="6" cy="19" r="3" fill="currentColor" className="text-ink-950"/>
-                <circle cx="18" cy="16" r="3" fill="currentColor" className="text-ink-950"/>
-              </svg>
-            </div>
+            <VibifyLogo size={40} className="shrink-0" />
             <div className="flex-1">
               <p className="text-sm font-semibold text-ink-50">Install Vibify</p>
               <p className="text-xs text-ink-400">Add to your Home Screen</p>
@@ -196,13 +191,7 @@ export function PWAInstallBanner({ standalone = false }: { standalone?: boolean 
       className={`fixed ${bottomCls} left-1/2 z-[90] w-[92%] max-w-sm -translate-x-1/2 rounded-2xl border border-white/10 bg-ink-900/95 px-4 py-3.5 shadow-2xl shadow-black/60 backdrop-blur-xl`}
     >
       <div className="flex items-center gap-3">
-        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-brand-400 to-brand-600 shadow-glow">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M9 19V6l12-3v13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-ink-950"/>
-            <circle cx="6" cy="19" r="3" fill="currentColor" className="text-ink-950"/>
-            <circle cx="18" cy="16" r="3" fill="currentColor" className="text-ink-950"/>
-          </svg>
-        </div>
+        <VibifyLogo size={40} className="shrink-0" />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-ink-50">Install Vibify</p>
           <p className="text-xs text-ink-400">Add to home screen — works offline too</p>

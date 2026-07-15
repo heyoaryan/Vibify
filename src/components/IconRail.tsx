@@ -1,7 +1,7 @@
 import { Home, Library, Search, Settings } from 'lucide-react';
 import { useCurrentUser } from '../auth';
 import { UserAvatar } from './UserAvatar';
-
+import { VibifyLogo } from './VibifyLogo';
 import { useNav } from '../nav';
 import type { NavSection } from '../types';
 
@@ -37,13 +37,7 @@ export function IconRail({
     <div className="flex h-full flex-col gap-1">
       {/* Brand */}
       <div className={`mb-4 flex items-center gap-3 ${expanded ? 'px-3 pt-3' : 'justify-center pt-3'}`}>
-        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-brand-400 to-brand-600 text-ink-950 shadow-glow transition-transform hover:scale-105">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M9 19V6l12-3v13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            <circle cx="6" cy="19" r="3" fill="currentColor"/>
-            <circle cx="18" cy="16" r="3" fill="currentColor"/>
-          </svg>
-        </span>
+        <VibifyLogo size={40} className="shrink-0 transition-transform hover:scale-105" />
         {expanded && (
           <span className="font-display text-xl font-bold tracking-tight text-ink-50">
             Vibify

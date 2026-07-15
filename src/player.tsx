@@ -111,6 +111,40 @@ function unlockAudioOnFirstGesture() {
 
 unlockAudioOnFirstGesture();
 
+// ─── Media Session API ────────────────────────────────────────────────────────
+// Sets the browser's "Now Playing" metadata — shown on lockscreen, notification
+// shade, headset controls, and browser media overlay on all platforms.
+function updateMediaSession(song: Song | null) {
+  if (!('mediaSession' in navigator)) return;
+  if (!song) {
+    navigator.mediaSession.metadata = null;
+    return;
+  }
+
+  const artwork: MediaImage[] = [];
+  if (song.imageUrl) {
+    artwork.push(
+      { src: song.imageUrl, sizes: '96x96',   type: 'image/jpeg' },
+      { src: song.imageUrl, sizes: '128x128',  type: 'image/jpeg' },
+      { src: song.imageUrl, sizes: '192x192',  type: 'image/jpeg' },
+      { src: song.imageUrl, sizes: '256x256',  type: 'image/jpeg' },
+      { src: song.imageUrl, sizes: '512x512',  type: 'image/jpeg' },
+    );
+  } else {
+    // Fallback: use the app icon
+    artwork.push(
+      { src: '/icons/logo.png', sizes: '1024x1024', type: 'image/png' },
+    );
+  }
+
+  navigator.mediaSession.metadata = new MediaMetadata({
+    title:  song.title,
+    artist: song.artist,
+    album:  song.album || 'Vibify',
+    artwork,
+  });
+}
+
 // ─── Volume ramp helper ───────────────────────────────────────────────────────
 /**
  * Linearly ramp `el.volume` from `from` to `to` over `durationMs` milliseconds.
@@ -230,19 +264,119 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
   }, [clearCrossfadeState]);
 
-  // Wire up audio element events once
+  // ─── Crossfade trigger — runs inside the rAF tick, zero React re-renders ──
+  // By moving this into the rAF loop we avoid the expensive useEffect that
+  // previously re-ran on every single position state update (~60fps).
+  const durationRef = useRef(0);
+  const isPlayingRef = useRef(false);
+  isPlayingRef.current = isPlaying;
+  durationRef.current = duration;
+
+  const tryCrossfade = useCallback(() => {
+    const { crossfadeSecs } = getSettings();
+    if (!crossfadeSecs || crossfadeSecs <= 0) return;
+    if (!durationRef.current || durationRef.current < crossfadeSecs * 2) return;
+    if (!isPlayingRef.current) return;
+    if (crossfadeFiredRef.current) return;
+    if (!activeAudio) return;
+
+    const remaining = durationRef.current - activeAudio.currentTime;
+    if (remaining > crossfadeSecs + 0.3) return;
+
+    crossfadeFiredRef.current = true;
+    crossfadeInProgressRef.current = true;
+
+    const q = queueRef.current;
+    const idx = indexRef.current;
+    const rep = repeatRef.current;
+    const targetVol = mutedRef.current ? 0 : volumeRef.current;
+    const fadeMs = crossfadeSecs * 1000;
+
+    let nextIdx: number | null = null;
+    if (rep === 'one') { nextIdx = idx; }
+    else if (idx < q.length - 1) { nextIdx = idx + 1; }
+    else if (rep === 'all' && q.length > 0) { nextIdx = 0; }
+
+    if (nextIdx === null || !nextAudio) {
+      cancelFadeOutRef.current = rampVolume(activeAudio, targetVol, 0, fadeMs);
+      return;
+    }
+
+    const nextSong = q[nextIdx];
+    if (!nextSong?.src) return;
+
+    nextAudio.src = nextSong.src;
+    nextAudio.volume = 0;
+    nextAudio.load();
+
+    const startCrossfade = () => {
+      if (!nextAudio || !activeAudio) return;
+      cancelFadeOutRef.current = rampVolume(activeAudio, targetVol, 0, fadeMs);
+      nextAudio.play().catch((err: DOMException) => {
+        if (err.name !== 'AbortError') console.error('[crossfade] nextAudio.play() failed:', err.name);
+      });
+      cancelFadeInRef.current = rampVolume(nextAudio, 0, targetVol, fadeMs, () => {
+        if (!activeAudio || !nextAudio) return;
+        activeAudio.pause();
+        activeAudio.src = '';
+        const tmp = activeAudio;
+        activeAudio = nextAudio;
+        nextAudio = tmp;
+        rewireListeners();
+        flushListenSeconds();
+        recordPlay(nextSong);
+        const newDur = isNaN(activeAudio.duration) ? 0 : activeAudio.duration;
+        const newPos = isNaN(activeAudio.currentTime) ? 0 : activeAudio.currentTime;
+        setDuration(newDur);
+        setPosition(newPos);
+        updateMediaSession(nextSong);
+        crossfadeLoadedIdRef.current = nextSong.id;
+        crossfadeInProgressRef.current = false;
+        crossfadeFiredRef.current = false;
+        setIndex(nextIdx!);
+      });
+    };
+
+    if (nextAudio.readyState >= 3) {
+      startCrossfade();
+    } else {
+      const onReady = () => { nextAudio?.removeEventListener('canplay', onReady); startCrossfade(); };
+      nextAudio.addEventListener('canplay', onReady);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ─── Wire up audio element events once ──────────────────────────────────────
+  // The rAF tick throttles position updates: only calls setPosition when the
+  // value has changed by more than 100ms, cutting React renders ~10× vs 60fps.
   useEffect(() => {
     if (!activeAudio) return;
 
-    const onPlay = () => {
-      setIsPlaying(true);
+    let lastReportedTime = -1;
+
+    const startTick = () => {
       const tick = () => {
         if (!activeAudio) return;
-        setPosition(activeAudio.currentTime);
+        const t = activeAudio.currentTime;
+        // Only update React state when position moved by ≥100 ms — this cuts
+        // render frequency from 60fps down to ~10fps for the seek bar while
+        // still looking smooth on screen.
+        if (Math.abs(t - lastReportedTime) >= 0.1) {
+          lastReportedTime = t;
+          setPosition(t);
+        }
+        // Crossfade check runs every rAF frame but does real work only once
+        // per song (guarded by crossfadeFiredRef), so it's effectively free.
+        tryCrossfade();
         rafRef.current = requestAnimationFrame(tick);
       };
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       rafRef.current = requestAnimationFrame(tick);
+    };
+
+    const onPlay = () => {
+      setIsPlaying(true);
+      startTick();
     };
 
     const onPause = () => {
@@ -257,7 +391,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
     const onEnded = () => {
       if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
-      // If crossfade already handled the transition, ignore native ended
       if (crossfadeInProgressRef.current) return;
       advanceIndex();
     };
@@ -285,126 +418,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ─── Crossfade scheduler ────────────────────────────────────────────────────
-  // Runs whenever position or duration updates. When position reaches
-  // (duration - crossfadeSecs), it kicks off the crossfade.
-  useEffect(() => {
-    const { crossfadeSecs } = getSettings();
-    if (!crossfadeSecs || crossfadeSecs <= 0) return;
-    if (!duration || duration < crossfadeSecs * 2) return; // song too short
-    if (!isPlaying) return;
-    if (crossfadeFiredRef.current) return;
-
-    const remaining = duration - position;
-    if (remaining > crossfadeSecs + 0.3) return; // not time yet — wait for next tick
-
-    // ── Time to crossfade ────────────────────────────────────────────────────
-    crossfadeFiredRef.current = true;
-    crossfadeInProgressRef.current = true;
-
-    const q = queueRef.current;
-    const idx = indexRef.current;
-    const rep = repeatRef.current;
-    const targetVol = mutedRef.current ? 0 : volumeRef.current;
-    const fadeMs = crossfadeSecs * 1000;
-
-    // Determine next song
-    let nextIdx: number | null = null;
-    if (rep === 'one') {
-      nextIdx = idx; // restart same
-    } else if (idx < q.length - 1) {
-      nextIdx = idx + 1;
-    } else if (rep === 'all' && q.length > 0) {
-      nextIdx = 0;
-    }
-
-    if (nextIdx === null || !nextAudio) {
-      // No next song — just fade out current
-      cancelFadeOutRef.current = rampVolume(
-        activeAudio!,
-        targetVol,
-        0,
-        fadeMs,
-      );
-      return;
-    }
-
-    const nextSong = q[nextIdx];
-    if (!nextSong?.src) return;
-
-    // Load next song into nextAudio and start it at volume 0
-    nextAudio.src = nextSong.src;
-    nextAudio.volume = 0;
-    nextAudio.load();
-
-    const startCrossfade = () => {
-      if (!nextAudio || !activeAudio) return;
-
-      // Fade out current
-      cancelFadeOutRef.current = rampVolume(activeAudio, targetVol, 0, fadeMs);
-
-      // Fade in next
-      nextAudio.play().catch((err: DOMException) => {
-        if (err.name !== 'AbortError') console.error('[crossfade] nextAudio.play() failed:', err.name);
-      });
-      cancelFadeInRef.current = rampVolume(nextAudio, 0, targetVol, fadeMs, () => {
-        // Crossfade complete — swap A/B roles and update React state
-        if (!activeAudio || !nextAudio) return;
-
-        // Stop the old active element
-        activeAudio.pause();
-        activeAudio.src = '';
-
-        // Swap module-level pointers
-        const tmp = activeAudio;
-        activeAudio = nextAudio;
-        nextAudio = tmp;
-
-        // Rewire DOM event listeners to new activeAudio
-        rewireListeners();
-
-        // Record history for the new song
-        flushListenSeconds();
-        recordPlay(nextSong);
-
-        // Update duration/position for new song
-        const newDur = isNaN(activeAudio.duration) ? 0 : activeAudio.duration;
-        const newPos = isNaN(activeAudio.currentTime) ? 0 : activeAudio.currentTime;
-        setDuration(newDur);
-        setPosition(newPos);
-
-        // Mark this song as already loaded by crossfade so the load-effect
-        // does NOT restart it when setIndex triggers a re-render.
-        crossfadeLoadedIdRef.current = nextSong.id;
-
-        // Advance React index — this changes current?.id which would normally
-        // trigger the load-effect; crossfadeLoadedIdRef guards against that.
-        crossfadeInProgressRef.current = false;
-        crossfadeFiredRef.current = false;
-        setIndex(nextIdx!);
-      });
-    };
-
-    // Wait for enough data in nextAudio before starting crossfade
-    if (nextAudio.readyState >= 3 /* HAVE_FUTURE_DATA */) {
-      startCrossfade();
-    } else {
-      const onReady = () => {
-        nextAudio?.removeEventListener('canplay', onReady);
-        startCrossfade();
-      };
-      nextAudio.addEventListener('canplay', onReady);
-    }
-  // We intentionally run this on every position tick when playing
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [position, isPlaying]);
-
   // ─── Rewire listeners when active/next swap ──────────────────────────────────
-  // Kept outside React so it can access the mutable module-level pointers.
   function rewireListeners() {
     if (!activeAudio) return;
 
-    // Remove from old (now nextAudio) — harmless if already removed
     nextAudio?.removeEventListener('play', handlePlay);
     nextAudio?.removeEventListener('pause', handlePause);
     nextAudio?.removeEventListener('durationchange', handleDurationChange);
@@ -417,11 +434,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     activeAudio.addEventListener('ended', handleEnded);
     activeAudio.addEventListener('error', handleError);
 
-    // Restart rAF on the new element
+    // Restart throttled rAF on the new element
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    let lastT = -1;
     const tick = () => {
       if (!activeAudio) return;
-      setPosition(activeAudio.currentTime);
+      const t = activeAudio.currentTime;
+      if (Math.abs(t - lastT) >= 0.1) { lastT = t; setPosition(t); }
+      tryCrossfade();
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
@@ -431,9 +451,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   function handlePlay() {
     setIsPlaying(true);
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    let lastT = -1;
     const tick = () => {
       if (!activeAudio) return;
-      setPosition(activeAudio.currentTime);
+      const t = activeAudio.currentTime;
+      if (Math.abs(t - lastT) >= 0.1) { lastT = t; setPosition(t); }
+      tryCrossfade();
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
@@ -499,6 +522,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     recordPlay(current);
     flushListenSeconds();
 
+    // Update lockscreen / notification metadata immediately on song change
+    updateMediaSession(current);
+
     const targetVol = mutedRef.current ? 0 : volumeRef.current;
 
     const doPlay = () => {
@@ -535,6 +561,59 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const id = setInterval(() => addListenSeconds(1), 1000);
     return () => clearInterval(id);
   }, [isPlaying]);
+
+  // ── Media Session playback state + action handlers ───────────────────────────
+  // Keeps the lockscreen play/pause button, seek bar, and hardware controls
+  // in sync with the actual player state.
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return;
+
+    navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+  }, [isPlaying]);
+
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return;
+
+    // Register hardware/notification button handlers once
+    navigator.mediaSession.setActionHandler('play',         () => { activeAudio?.play().catch(() => {}); });
+    navigator.mediaSession.setActionHandler('pause',        () => { activeAudio?.pause(); });
+    navigator.mediaSession.setActionHandler('previoustrack', () => prev());
+    navigator.mediaSession.setActionHandler('nexttrack',    () => next());
+    navigator.mediaSession.setActionHandler('stop',         () => { activeAudio?.pause(); setPosition(0); });
+    navigator.mediaSession.setActionHandler('seekto', (details) => {
+      if (details.seekTime != null) seek(details.seekTime);
+    });
+    navigator.mediaSession.setActionHandler('seekbackward', (details) => {
+      const skipTime = details.seekOffset ?? 10;
+      seek(Math.max(0, (activeAudio?.currentTime ?? 0) - skipTime));
+    });
+    navigator.mediaSession.setActionHandler('seekforward', (details) => {
+      const skipTime = details.seekOffset ?? 10;
+      const dur = activeAudio?.duration ?? 0;
+      seek(Math.min(dur, (activeAudio?.currentTime ?? 0) + skipTime));
+    });
+
+    return () => {
+      if (!('mediaSession' in navigator)) return;
+      (['play','pause','previoustrack','nexttrack','stop','seekto','seekbackward','seekforward'] as MediaSessionAction[])
+        .forEach(a => { try { navigator.mediaSession.setActionHandler(a, null); } catch { /* unsupported */ } });
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Keep Media Session position state in sync (~1s precision is enough for OS)
+  useEffect(() => {
+    if (!('mediaSession' in navigator) || !('setPositionState' in navigator.mediaSession)) return;
+    if (!duration || duration <= 0) return;
+    try {
+      navigator.mediaSession.setPositionState({
+        duration,
+        playbackRate: 1,
+        position: Math.min(position, duration),
+      });
+    } catch { /* some browsers throw if duration is Infinity */ }
+  // Run on every position change — but position only updates ~10fps now
+  }, [position, duration]);
 
   // Sync volume / mute to active audio
   useEffect(() => {

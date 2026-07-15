@@ -146,9 +146,38 @@ input[type="range"].slider::-moz-range-thumb {
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 .text-balance { text-wrap: balance; }
 
-/* Horizontal scroll rail snap */
+/* ── Performance — CSS containment & GPU promotion ──────────────────────── */
+
+/* Player bar, NowPlaying overlay, and fixed/sticky panels get their own
+   composite layer. This prevents them from triggering full-page repaints
+   when they animate or update. */
+.glass,
+.glass-strong {
+  contain: layout style;
+}
+
+/* Canvas elements (Visualizer) run on the GPU already — hint to browser */
+canvas {
+  will-change: contents;
+  transform: translateZ(0);
+}
+
+/* Song artwork images — promote to own layer to avoid repaint on parent changes */
+.contain-content {
+  contain: strict;
+  transform: translateZ(0);
+}
+
+/* Animated bars (EQ indicator) */
+.animate-bar-rise {
+  will-change: height;
+}
+
+/* Smooth scrolling rails */
 .snap-rail {
   scroll-snap-type: x mandatory;
   -webkit-overflow-scrolling: touch;
+  /* Contain overflow changes to this element only */
+  contain: layout;
 }
 .snap-card { scroll-snap-align: start; }

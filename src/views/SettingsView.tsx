@@ -1,7 +1,8 @@
 import { Bell, Lock, Moon, Music, Shield, Wifi, Zap } from 'lucide-react';
+import { memo, useState } from 'react';
 import { useSettings, type AudioQuality } from '../settings';
 import { NoticeModal } from '../components/NoticeModal';
-import { useState } from 'react';
+import { VibifyLogo } from '../components/VibifyLogo';
 
 // ── Reusable toggle switch ────────────────────────────────────────────────────
 function Toggle({ enabled, onChange }: { enabled: boolean; onChange: (v: boolean) => void }) {
@@ -113,7 +114,7 @@ function CrossfadeSelector({ value, onChange }: { value: number; onChange: (n: n
 }
 
 // ── Main ─────────────────────────────────────────────────────────────────────
-export function SettingsView() {
+export const SettingsView = memo(function SettingsView() {
   const [settings, update] = useSettings();
   const [notifModal, setNotifModal] = useState(false);
 
@@ -130,7 +131,7 @@ export function SettingsView() {
     const permission = await Notification.requestPermission();
     if (permission === 'granted') {
       update({ notifications: true });
-      new Notification('Vibify', { body: 'Notifications enabled!', icon: '/icons/icon-192.svg' });
+      new Notification('Vibify', { body: 'Notifications enabled!', icon: '/icons/logo.png' });
     } else {
       update({ notifications: false });
       setNotifModal(true);
@@ -240,13 +241,7 @@ export function SettingsView() {
 
           {/* Logo + name */}
           <div className="flex flex-col items-center gap-3 border-b border-white/5 px-6 py-8 text-center">
-            <div className="grid h-16 w-16 place-items-center rounded-2xl bg-gradient-to-br from-brand-400 to-brand-600 shadow-glow">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M9 19V6l12-3v13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-ink-950"/>
-                <circle cx="6" cy="19" r="3" fill="currentColor" className="text-ink-950"/>
-                <circle cx="18" cy="16" r="3" fill="currentColor" className="text-ink-950"/>
-              </svg>
-            </div>
+            <VibifyLogo size={72} className="drop-shadow-[0_0_20px_rgba(10,168,149,0.5)]" />
             <div>
               <p className="font-display text-xl font-bold text-ink-50">Vibify</p>
               <p className="mt-0.5 text-xs text-ink-400">Version 1.0.0</p>
@@ -279,4 +274,4 @@ export function SettingsView() {
       </NoticeModal>
     </div>
   );
-}
+});

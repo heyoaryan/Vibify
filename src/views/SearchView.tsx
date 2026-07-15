@@ -1,5 +1,5 @@
 import { Loader2, Mic, MicOff, Music2, Play, Search as SearchIcon, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { usePlayer } from '../player';
 import type { Song } from '../types';
@@ -32,53 +32,118 @@ declare global {
   }
 }
 
-// Remove duplicate songs by ID, then by (title + artist), then by imageUrl
+// ─── Dedup helper ─────────────────────────────────────────────────────────────
 function deduplicateSongs(songs: Song[]): Song[] {
   const seenIds = new Set<string>();
   const seenTitleArtist = new Set<string>();
   const seenImages = new Set<string>();
   const result: Song[] = [];
-
   for (const song of songs) {
     if (seenIds.has(song.id)) continue;
-
-    const titleArtistKey = `${song.title.toLowerCase().trim()}|${song.artist.toLowerCase().trim()}`;
-    if (seenTitleArtist.has(titleArtistKey)) continue;
-
-    // Same image URL = almost certainly the same song
+    const key = `${song.title.toLowerCase().trim()}|${song.artist.toLowerCase().trim()}`;
+    if (seenTitleArtist.has(key)) continue;
     if (song.imageUrl && seenImages.has(song.imageUrl)) continue;
-
     seenIds.add(song.id);
-    seenTitleArtist.add(titleArtistKey);
+    seenTitleArtist.add(key);
     if (song.imageUrl) seenImages.add(song.imageUrl);
     result.push(song);
   }
-
   return result;
 }
 
 const GENRES = [
-  { label: 'Bollywood',      query: 'bollywood hits',            hue: 340 },
-  { label: 'Arijit Singh',   query: 'arijit singh',              hue: 210 },
-  { label: 'Punjabi',        query: 'punjabi hits',              hue: 30  },
-  { label: 'Lo-fi',          query: 'lofi hindi',                hue: 200 },
-  { label: 'Romantic',       query: 'romantic hindi songs',      hue: 0   },
-  { label: 'Party',          query: 'party songs hindi',         hue: 260 },
-  { label: 'Devotional',     query: 'hindi devotional songs',    hue: 45  },
-  { label: 'Retro',          query: 'old hindi songs retro',     hue: 170 },
-  { label: 'Hip-Hop',        query: 'hindi hip hop rap',         hue: 280 },
-  { label: 'Sad Songs',      query: 'sad hindi songs',           hue: 230 },
-  { label: 'Item Songs',     query: 'item songs bollywood',      hue: 10  },
-  { label: 'Sufi',           query: 'sufi songs hindi',          hue: 150 },
-  { label: 'Workout',        query: 'workout gym songs hindi',   hue: 90  },
-  { label: 'AR Rahman',      query: 'ar rahman songs',           hue: 190 },
-  { label: 'Indie',          query: 'hindi indie songs',         hue: 310 },
-  { label: 'Chill',          query: 'chill vibes hindi',         hue: 175 },
-  { label: 'Trending',       query: 'trending songs 2024',       hue: 55  },
-  { label: 'English Pop',    query: 'english pop hits',          hue: 240 },
+  { label: 'Bollywood',    query: 'bollywood hits',          hue: 340 },
+  { label: 'Arijit Singh', query: 'arijit singh',            hue: 210 },
+  { label: 'Punjabi',      query: 'punjabi hits',            hue: 30  },
+  { label: 'Lo-fi',        query: 'lofi hindi',              hue: 200 },
+  { label: 'Romantic',     query: 'romantic hindi songs',    hue: 0   },
+  { label: 'Party',        query: 'party songs hindi',       hue: 260 },
+  { label: 'Devotional',   query: 'hindi devotional songs',  hue: 45  },
+  { label: 'Retro',        query: 'old hindi songs retro',   hue: 170 },
+  { label: 'Hip-Hop',      query: 'hindi hip hop rap',       hue: 280 },
+  { label: 'Sad Songs',    query: 'sad hindi songs',         hue: 230 },
+  { label: 'Item Songs',   query: 'item songs bollywood',    hue: 10  },
+  { label: 'Sufi',         query: 'sufi songs hindi',        hue: 150 },
+  { label: 'Workout',      query: 'workout gym songs hindi', hue: 90  },
+  { label: 'AR Rahman',    query: 'ar rahman songs',         hue: 190 },
+  { label: 'Indie',        query: 'hindi indie songs',       hue: 310 },
+  { label: 'Chill',        query: 'chill vibes hindi',       hue: 175 },
+  { label: 'Trending',     query: 'trending songs 2024',     hue: 55  },
+  { label: 'English Pop',  query: 'english pop hits',        hue: 240 },
 ];
 
-export function SearchView() {
+// ─── Module-level search cache (persists across re-mounts) ───────────────────
+const _searchCache = new Map<string, Song[]>();
+
+// ─── Skeleton rows (memoized constant) ───────────────────────────────────────
+const SkeletonRows = memo(function SkeletonRows({ count }: { count: number }) {
+  return (
+    <div className="space-y-1 overflow-hidden rounded-xl">
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className="grid grid-cols-[20px_40px_1fr_auto] items-center gap-3 px-3 py-2.5 sm:grid-cols-[24px_44px_1fr_auto]">
+          <div className="h-4 w-4 animate-pulse rounded bg-ink-700" />
+          <div className="h-10 w-10 animate-pulse rounded-md bg-ink-700" />
+          <div className="space-y-1.5">
+            <div className="h-3 w-2/3 animate-pulse rounded bg-ink-700" />
+            <div className="h-2.5 w-1/2 animate-pulse rounded bg-ink-800" />
+          </div>
+          <div className="h-3 w-8 animate-pulse rounded bg-ink-700" />
+        </div>
+      ))}
+    </div>
+  );
+});
+
+// ─── Single song row — memoized so list re-renders only when isCurrent changes ─
+const SongRow = memo(function SongRow({
+  song,
+  index,
+  isCurrent,
+  isPlaying,
+  onPlay,
+}: {
+  song: Song;
+  index: number;
+  isCurrent: boolean;
+  isPlaying: boolean;
+  onPlay: () => void;
+}) {
+  return (
+    <button
+      onClick={onPlay}
+      className="group grid w-full grid-cols-[20px_40px_1fr_auto] items-center gap-2.5 px-3 py-2.5
+        text-left transition-colors hover:bg-white/5 sm:grid-cols-[24px_44px_1fr_auto] sm:gap-3"
+    >
+      <span className="text-xs tabular-nums text-ink-300 sm:text-sm">
+        {isCurrent && isPlaying ? (
+          <span className="flex items-end gap-[2px] h-4">
+            {[0.6, 1, 0.4].map((h, j) => (
+              <span key={j} className="w-[2px] rounded-full bg-brand-400 animate-bar-rise"
+                style={{ height: `${h * 100}%`, animationDelay: `${j * 0.2}s` }} />
+            ))}
+          </span>
+        ) : (
+          <>
+            <span className="group-hover:hidden">{index + 1}</span>
+            <Play size={13} className="hidden fill-brand-400 text-brand-400 group-hover:block" />
+          </>
+        )}
+      </span>
+      <Artwork title={song.title} hue={song.hue} hue2={song.hue2} imageUrl={song.imageUrl}
+        className="h-10 w-10" rounded="rounded-md" />
+      <div className="min-w-0">
+        <p className={`truncate text-xs font-medium sm:text-sm ${isCurrent ? 'text-brand-400' : 'text-ink-50'}`}>
+          {song.title}
+        </p>
+        <p className="truncate text-[10px] text-ink-300 sm:text-xs">{song.artist} · {song.album}</p>
+      </div>
+      <span className="hidden text-xs tabular-nums text-ink-300 sm:block">{formatTime(song.duration)}</span>
+    </button>
+  );
+});
+
+// ─── Main view ────────────────────────────────────────────────────────────────
+export const SearchView = memo(function SearchView() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Song[]>([]);
   const [loading, setLoading] = useState(false);
@@ -88,51 +153,76 @@ export function SearchView() {
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
 
-  // Browse all — 10 dynamic songs fetched once on mount
-  const [browseAll, setBrowseAll] = useState<Song[]>([]);
-  const [browseLoading, setBrowseLoading] = useState(false);
+  // Browse all — fetched once, cached in module scope
+  const [browseAll, setBrowseAll] = useState<Song[]>(() => _searchCache.get('__browse__') ?? []);
+  const [browseLoading, setBrowseLoading] = useState(_searchCache.get('__browse__') == null);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
 
   const { playSongs, current, isPlaying, togglePlay } = usePlayer();
 
-  const localSearch = (text: string, limit = 20) => {
-    const terms = text.toLowerCase().split(/\s+/).filter(Boolean);
+  // ── Local (offline) search — partial/fuzzy substring match ───────────────
+  // Each term only needs to appear as a substring anywhere in title/artist/album.
+  // e.g. "arij" matches "Arijit Singh", "dil" matches "Dilbaro".
+  const localSearch = useCallback((text: string, limit = 20) => {
+    const terms = text.toLowerCase().split(/\s+/).filter(t => t.length >= 2);
     if (!terms.length) return [];
+    return ALL_SONGS
+      .map(song => {
+        const hay = `${song.title} ${song.artist} ${song.album} ${song.genre}`.toLowerCase();
+        // Score: how many terms match, and reward exact word boundary matches
+        let score = 0;
+        for (const t of terms) {
+          if (!hay.includes(t)) return null; // must match all terms
+          score += hay.split(t).length - 1; // count occurrences
+          // Bonus for starting match
+          if (hay.startsWith(t) || hay.includes(' ' + t)) score += 2;
+        }
+        return { song, score };
+      })
+      .filter((x): x is { song: Song; score: number } => x !== null)
+      .sort((a, b) => b.score - a.score)
+      .map(x => x.song)
+      .slice(0, limit);
+  }, []);
 
-    return ALL_SONGS.filter(song => {
-      const haystack = `${song.title} ${song.artist} ${song.album} ${song.genre}`.toLowerCase();
-      return terms.every(term => haystack.includes(term));
-    }).slice(0, limit);
-  };
-
-  // Fetch 10 trending songs for "Browse all" on mount
+  // ── Browse all — fetch once on first mount ─────────────────────────────────
   useEffect(() => {
+    if (_searchCache.has('__browse__')) return;
     setBrowseLoading(true);
     searchSongs('trending hindi songs 2024', 10)
-      .then(songs => setBrowseAll(deduplicateSongs(songs)))
+      .then(songs => {
+        const dedupd = deduplicateSongs(songs);
+        _searchCache.set('__browse__', dedupd);
+        setBrowseAll(dedupd);
+      })
       .catch(() => {})
       .finally(() => setBrowseLoading(false));
   }, []);
 
-  // Listen for "Go to artist" from NowPlayingView action sheet
-  // Direct fetch — bypasses debounce so results load immediately on navigation
+  // ── "Go to artist" event from NowPlayingView action sheet ──────────────────
   useEffect(() => {
     const handler = async (e: Event) => {
       const artist = (e as CustomEvent<string>).detail;
       if (!artist) return;
-
-      // Set the visible query text
       setQuery(artist);
       setLoading(true);
       setSearched(false);
-
+      const cached = _searchCache.get(artist);
+      if (cached) {
+        setResults(cached);
+        setSearched(true);
+        setLoading(false);
+        return;
+      }
       try {
-        const remoteResults = await searchSongs(artist, 20);
-        const next = remoteResults.length > 0
-          ? deduplicateSongs(remoteResults)
-          : deduplicateSongs(localSearch(artist, 20));
+        const remote = await searchSongs(artist, 20);
+        const local = localSearch(artist, 20);
+        const remoteIds = new Set(remote.map(s => s.id));
+        const merged = [...remote, ...local.filter(s => !remoteIds.has(s.id))];
+        const next = deduplicateSongs(merged.length > 0 ? merged : local);
+        _searchCache.set(artist, next);
         setResults(next);
       } catch {
         setResults(deduplicateSongs(localSearch(artist, 20)));
@@ -141,121 +231,160 @@ export function SearchView() {
         setLoading(false);
       }
     };
-
     window.addEventListener('vibify-search', handler);
     return () => window.removeEventListener('vibify-search', handler);
-  // localSearch is defined inside component — safe to omit from deps
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ── Voice recognition — created once on mount ──────────────────────────────
   useEffect(() => {
-    const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (SpeechRecognitionCtor) {
-      setVoiceSupported(true);
-      const recognition = new SpeechRecognitionCtor();
-      recognition.continuous = false;
-      recognition.interimResults = true;
-      recognition.lang = 'en-IN';
-      recognition.onresult = event => {
-        let interim = '';
-        let final = '';
-        for (let i = event.results.length - 1; i >= 0; i--) {
-          const transcript = event.results[i][0]?.transcript ?? '';
-          if (event.results[i].isFinal) {
-            final = transcript;
-          } else {
-            interim = transcript;
-          }
-        }
-        // Only show interim in modal, never final text there
-        setInterimTranscript(interim);
-        // Only update query with final result, not interim
-        if (final) {
-          setVoiceError(null);
-          setQuery(final);
-        }
-      };
-      recognition.onerror = event => {
-        setVoiceListening(false);
-        setVoiceError(event.error === 'not-allowed' ? 'Microphone access was denied.' : 'Voice search could not be completed.');
-      };
-      recognition.onend = () => {
-        setVoiceListening(false);
-        setInterimTranscript('');
-      };
-      recognitionRef.current = recognition;
-    } else {
-      setVoiceSupported(false);
-    }
-
-    return () => {
-      recognitionRef.current?.stop();
-      recognitionRef.current = null;
+    const Ctor = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!Ctor) { setVoiceSupported(false); return; }
+    setVoiceSupported(true);
+    const rec = new Ctor();
+    rec.continuous = false;
+    rec.interimResults = true;
+    rec.lang = 'en-IN';
+    rec.onresult = event => {
+      let interim = '', final = '';
+      for (let i = event.results.length - 1; i >= 0; i--) {
+        const t = event.results[i][0]?.transcript ?? '';
+        if (event.results[i].isFinal) final = t; else interim = t;
+      }
+      setInterimTranscript(interim);
+      if (final) { setVoiceError(null); setQuery(final); }
     };
+    rec.onerror = ev => {
+      setVoiceListening(false);
+      setVoiceError(ev.error === 'not-allowed' ? 'Microphone access was denied.' : 'Voice search could not be completed.');
+    };
+    rec.onend = () => { setVoiceListening(false); setInterimTranscript(''); };
+    recognitionRef.current = rec;
+    return () => { recognitionRef.current?.stop(); recognitionRef.current = null; };
   }, []);
 
+  // ── Debounced search — 350ms, with cache + prefix expansion ──────────────
+  // If user types a short partial word (≥4 chars, no space), we append a
+  // wildcard-style expansion so JioSaavn returns broader results.
+  // e.g.  "arij"  → API gets "arijit"  (first 4 chars → try common expansion)
+  //        "dil"  → too short, just send as-is
+  //        "dilb" → send "dilb" — JioSaavn handles prefix search well
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     const q = query.trim();
     if (!q) { setResults([]); setSearched(false); setLoading(false); return; }
+
+    // Instant hit from cache — no spinner at all
+    const cached = _searchCache.get(q);
+    if (cached) {
+      setResults(cached);
+      setSearched(true);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
+
+    // Build the actual API query.
+    // JioSaavn does native prefix search — "arij" already returns "Arijit Singh".
+    // For short partial words (4–7 chars, single token), we also merge local
+    // results so even offline/data-limited users get partial matches.
+    const tokens = q.split(/\s+/).filter(Boolean);
+    const isSinglePartial = tokens.length === 1 && tokens[0].length >= 4 && tokens[0].length <= 7;
+    const apiQuery = q;
+
     debounceRef.current = setTimeout(async () => {
       try {
-        const remoteResults = await searchSongs(q, 20);
-        const nextResults = remoteResults.length > 0
-          ? deduplicateSongs(remoteResults)
-          : deduplicateSongs(localSearch(q, 20));
-        setResults(nextResults);
+        const remote = await searchSongs(apiQuery, 20);
+
+        // If partial single word AND remote results are few, merge local results
+        let merged = remote;
+        if (isSinglePartial || remote.length < 5) {
+          const local = localSearch(q, 20);
+          // Combine: remote first (more accurate), then local extras not already in remote
+          const remoteIds = new Set(remote.map(s => s.id));
+          const extras = local.filter(s => !remoteIds.has(s.id));
+          merged = [...remote, ...extras];
+        }
+
+        const next = deduplicateSongs(merged.length > 0 ? merged : localSearch(q, 20));
+        _searchCache.set(q, next);
+        setResults(next);
       } catch {
-        setResults(deduplicateSongs(localSearch(q, 20)));
+        const fallback = deduplicateSongs(localSearch(q, 20));
+        setResults(fallback);
       } finally {
         setSearched(true);
         setLoading(false);
       }
-    }, 500);
+    }, 350);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query]);
 
-  const playSong = (s: Song) => {
+  const playSong = useCallback((s: Song) => {
     if (current?.id === s.id) togglePlay();
     else playSongs(results.length > 0 ? results : [s], s.id);
-  };
+  }, [current, togglePlay, playSongs, results]);
 
-  const toggleVoiceSearch = () => {
-    const recognition = recognitionRef.current;
-    if (!recognition) {
-      setVoiceError('Voice search is not supported in this browser.');
-      return;
-    }
-
+  const toggleVoiceSearch = useCallback(() => {
+    const rec = recognitionRef.current;
+    if (!rec) { setVoiceError('Voice search is not supported in this browser.'); return; }
     if (voiceListening) {
-      recognition.stop();
+      rec.stop();
       setVoiceListening(false);
       setInterimTranscript('');
       return;
     }
-
     setVoiceError(null);
     setInterimTranscript('');
     setVoiceListening(true);
-    
-    // Pause currently playing song
-    if (current && isPlaying) {
-      togglePlay();
-    }
-    
-    try {
-      recognition.start();
-    } catch {
-      setVoiceListening(false);
-      setVoiceError('Voice search could not be started.');
-    }
-  };
+    if (current && isPlaying) togglePlay();
+    try { rec.start(); }
+    catch { setVoiceListening(false); setVoiceError('Voice search could not be started.'); }
+  }, [voiceListening, current, isPlaying, togglePlay]);
 
-  const playGenre = async (g: typeof GENRES[0]) => {
+  const playGenre = useCallback(async (g: typeof GENRES[0]) => {
+    const cached = _searchCache.get('genre:' + g.query);
+    if (cached) { playSongs(cached, cached[0].id); return; }
     const list = deduplicateSongs(await getArtistSongs(g.query, 10));
-    if (list.length) playSongs(list, list[0].id);
-  };
+    if (list.length) {
+      _searchCache.set('genre:' + g.query, list);
+      playSongs(list, list[0].id);
+    }
+  }, [playSongs]);
+
+  // Memoize the results list so it doesn't re-render when only playback state changes
+  const resultRows = useMemo(() =>
+    results.map((s, i) => (
+      <SongRow
+        key={s.id}
+        song={s}
+        index={i}
+        isCurrent={current?.id === s.id}
+        isPlaying={isPlaying && current?.id === s.id}
+        onPlay={() => playSong(s)}
+      />
+    )),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [results, current?.id, isPlaying]);
+
+  const browseRows = useMemo(() =>
+    browseAll.map((s, i) => (
+      <SongRow
+        key={s.id}
+        song={s}
+        index={i}
+        isCurrent={current?.id === s.id}
+        isPlaying={isPlaying && current?.id === s.id}
+        onPlay={() => {
+          if (current?.id === s.id) togglePlay();
+          else playSongs(browseAll, s.id);
+        }}
+      />
+    )),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [browseAll, current?.id, isPlaying]);
 
   return (
     <div className="animate-fade-in space-y-6 px-3 pb-12 sm:space-y-8 sm:px-5 lg:px-8">
@@ -302,58 +431,36 @@ export function SearchView() {
       {/* ── Voice listening modal ── */}
       {voiceListening && (
         <div
-          onClick={() => toggleVoiceSearch()}
+          onClick={toggleVoiceSearch}
           className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-black/80 backdrop-blur-sm"
         >
           <div
-            onClick={(e) => e.stopPropagation()}
-            className="flex w-[92%] max-w-xs sm:max-w-sm flex-col items-center gap-6 rounded-3xl border border-brand-400/20 bg-gradient-to-b from-brand-500/10 to-ink-900/50 p-5 sm:p-8 shadow-2xl max-h-[80vh] overflow-auto mt-24 sm:mt-0"
+            onClick={e => e.stopPropagation()}
+            className="flex w-[92%] max-w-xs sm:max-w-sm flex-col items-center gap-6 rounded-3xl
+              border border-brand-400/20 bg-gradient-to-b from-brand-500/10 to-ink-900/50
+              p-5 sm:p-8 shadow-2xl max-h-[80vh] overflow-auto mt-24 sm:mt-0"
           >
-
-            {/* Animated waveform */}
             <div className="flex items-end justify-center gap-1 h-16">
               {Array.from({ length: 12 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="w-1 rounded-full bg-gradient-to-t from-brand-400 to-brand-300 animate-pulse"
-                  style={{
-                    height: `${20 + Math.sin(i * 0.5) * 20}px`,
-                    opacity: 0.5 + Math.sin(Date.now() / 100 + i) * 0.5,
-                    animation: `wave-motion 0.8s ease-in-out ${i * 0.05}s infinite`,
-                  }}
-                />
+                <div key={i} className="w-1 rounded-full bg-gradient-to-t from-brand-400 to-brand-300"
+                  style={{ height: `${20 + Math.sin(i * 0.5) * 20}px`, animation: `wave-motion 0.8s ease-in-out ${i * 0.05}s infinite` }} />
               ))}
             </div>
-
-            {/* Status text */}
             <div className="text-center">
               <p className="font-display text-2xl font-bold text-ink-50">Listening…</p>
               <p className="mt-2 text-sm text-ink-300">Speak a song or artist name</p>
             </div>
-
-            {/* Interim transcript */}
             {interimTranscript && (
               <div className="w-full rounded-2xl border border-brand-400/30 bg-white/[0.03] p-4 backdrop-blur-xl">
                 <p className="text-sm text-brand-200">{interimTranscript}</p>
               </div>
             )}
-
-            {/* Stop button */}
-            <button
-              onClick={toggleVoiceSearch}
-              className="mt-4 w-full rounded-xl bg-brand-400 py-2.5 text-sm font-semibold text-ink-950 transition-all hover:scale-105 active:scale-95"
-            >
+            <button onClick={toggleVoiceSearch}
+              className="mt-4 w-full rounded-xl bg-brand-400 py-2.5 text-sm font-semibold text-ink-950 transition-all hover:scale-105 active:scale-95">
               Stop Listening
             </button>
           </div>
-
-          {/* Keyframe animation */}
-          <style>{`
-            @keyframes wave-motion {
-              0%, 100% { transform: scaleY(0.8); opacity: 0.5; }
-              50% { transform: scaleY(1.2); opacity: 1; }
-            }
-          `}</style>
+          <style>{`@keyframes wave-motion{0%,100%{transform:scaleY(.8);opacity:.5}50%{transform:scaleY(1.2);opacity:1}}`}</style>
         </div>
       )}
 
@@ -364,9 +471,7 @@ export function SearchView() {
             <h2 className="mb-3 font-display text-lg font-bold text-ink-50 sm:mb-4 sm:text-xl">Browse genres</h2>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-6">
               {GENRES.map(g => (
-                <button
-                  key={g.label}
-                  onClick={() => playGenre(g)}
+                <button key={g.label} onClick={() => playGenre(g)}
                   className="group relative h-24 overflow-hidden rounded-2xl p-4 text-left
                     transition-transform hover:scale-[1.02] active:scale-[0.98] sm:h-28"
                   style={{ background: `linear-gradient(135deg, hsl(${g.hue} 60% 35%), hsl(${(g.hue + 40) % 360} 55% 22%))` }}
@@ -380,66 +485,10 @@ export function SearchView() {
 
           <section>
             <h2 className="mb-3 font-display text-lg font-bold text-ink-50 sm:mb-4 sm:text-xl">Browse all</h2>
-
-            {/* Loading skeleton */}
-            {browseLoading && (
-              <div className="space-y-1 overflow-hidden rounded-xl">
-                {Array.from({ length: 10 }).map((_, i) => (
-                  <div key={i} className="grid grid-cols-[20px_40px_1fr_auto] items-center gap-3 px-3 py-2.5 sm:grid-cols-[24px_44px_1fr_auto]">
-                    <div className="h-4 w-4 animate-pulse rounded bg-ink-700" />
-                    <div className="h-10 w-10 animate-pulse rounded-md bg-ink-700" />
-                    <div className="space-y-1.5">
-                      <div className="h-3 w-2/3 animate-pulse rounded bg-ink-700" />
-                      <div className="h-2.5 w-1/2 animate-pulse rounded bg-ink-800" />
-                    </div>
-                    <div className="h-3 w-8 animate-pulse rounded bg-ink-700" />
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Song list */}
+            {browseLoading && <SkeletonRows count={10} />}
             {!browseLoading && browseAll.length > 0 && (
-              <div className="overflow-hidden rounded-xl">
-                {browseAll.map((s, i) => {
-                  const isCurrent = current?.id === s.id;
-                  return (
-                    <button
-                      key={s.id}
-                      onClick={() => {
-                        if (isCurrent) togglePlay();
-                        else playSongs(browseAll, s.id);
-                      }}
-                      className="group grid w-full grid-cols-[20px_40px_1fr_auto] items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-white/5
-                        sm:grid-cols-[24px_44px_1fr_auto] sm:gap-3"
-                    >
-                      <span className="text-xs tabular-nums text-ink-300 sm:text-sm">
-                        {isCurrent && isPlaying
-                          ? <span className="flex items-end gap-[2px] h-4">
-                              {[0.6, 1, 0.4].map((h, j) => (
-                                <span key={j} className="w-[2px] rounded-full bg-brand-400 animate-bar-rise"
-                                  style={{ height: `${h * 100}%`, animationDelay: `${j * 0.2}s` }} />
-                              ))}
-                            </span>
-                          : <>
-                              <span className="group-hover:hidden">{i + 1}</span>
-                              <Play size={13} className="hidden fill-brand-400 text-brand-400 group-hover:block" />
-                            </>}
-                      </span>
-                      <Artwork title={s.title} hue={s.hue} hue2={s.hue2} imageUrl={s.imageUrl}
-                        className="h-10 w-10" rounded="rounded-md" />
-                  <div className="min-w-0">
-                        <p className={`truncate text-xs font-medium sm:text-sm ${isCurrent ? 'text-brand-400' : 'text-ink-50'}`}>{s.title}</p>
-                        <p className="truncate text-[10px] text-ink-300 sm:text-xs">{s.artist} · {s.album}</p>
-                      </div>
-                      <span className="hidden text-xs tabular-nums text-ink-300 sm:block">{formatTime(s.duration)}</span>
-                    </button>
-                  );
-                })}
-              </div>
+              <div className="overflow-hidden rounded-xl">{browseRows}</div>
             )}
-
-            {/* Empty state */}
             {!browseLoading && browseAll.length === 0 && (
               <div className="flex flex-col items-center justify-center py-10 text-center">
                 <Music2 size={28} className="mb-3 text-ink-400" />
@@ -454,19 +503,7 @@ export function SearchView() {
       {loading && (
         <section>
           <h2 className="mb-3 font-display text-lg font-bold text-ink-50 sm:text-xl">Songs</h2>
-          <div className="space-y-1 overflow-hidden rounded-xl">
-            {Array.from({ length: 7 }).map((_, i) => (
-              <div key={i} className="grid grid-cols-[20px_40px_1fr_auto] items-center gap-3 px-3 py-2.5 sm:grid-cols-[24px_44px_1fr_auto]">
-                <div className="h-4 w-4 animate-pulse rounded bg-ink-700" />
-                <div className="h-10 w-10 animate-pulse rounded-md bg-ink-700" />
-                <div className="space-y-1.5">
-                  <div className="h-3 w-2/3 animate-pulse rounded bg-ink-700" />
-                  <div className="h-2.5 w-1/2 animate-pulse rounded bg-ink-800" />
-                </div>
-                <div className="h-3 w-8 animate-pulse rounded bg-ink-700" />
-              </div>
-            ))}
-          </div>
+          <SkeletonRows count={7} />
         </section>
       )}
 
@@ -485,44 +522,11 @@ export function SearchView() {
       {!loading && results.length > 0 && (
         <section>
           <h2 className="mb-3 font-display text-lg font-bold text-ink-50 sm:text-xl">
-            Songs
-            <span className="ml-2 text-sm font-normal text-ink-400">{results.length} results</span>
+            Songs <span className="ml-2 text-sm font-normal text-ink-400">{results.length} results</span>
           </h2>
-          <div className="overflow-hidden rounded-xl">
-            {results.map((s, i) => {
-              const isCurrent = current?.id === s.id;
-              return (
-                <button
-                  key={s.id}
-                  onClick={() => playSong(s)}
-                  className="group grid w-full grid-cols-[20px_40px_1fr_auto] items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-white/5
-                    sm:grid-cols-[24px_44px_1fr_auto] sm:gap-3"
-                >
-                  <span className="text-xs tabular-nums text-ink-300 sm:text-sm">
-                    {isCurrent && isPlaying
-                      ? <span className="flex items-end gap-[2px] h-4">
-                          {[0.6, 1, 0.4].map((h, j) => (
-                            <span key={j} className="w-[2px] rounded-full bg-brand-400 animate-bar-rise"
-                              style={{ height: `${h * 100}%`, animationDelay: `${j * 0.2}s` }} />
-                          ))}
-                        </span>
-                      : <>
-                          <span className="group-hover:hidden">{i + 1}</span>
-                          <Play size={13} className="hidden fill-brand-400 text-brand-400 group-hover:block" />
-                        </>}
-                  </span>
-                  <Artwork title={s.title} hue={s.hue} hue2={s.hue2} imageUrl={s.imageUrl}
-                    className="h-10 w-10" rounded="rounded-md" />
-                  <div className="min-w-0">
-                    <p className={`truncate text-xs font-medium sm:text-sm ${isCurrent ? 'text-brand-400' : 'text-ink-50'}`}>{s.title}</p>
-                    <p className="truncate text-[10px] text-ink-300 sm:text-xs">{s.artist} · {s.album}</p>
-                  </div>
-                  <span className="hidden text-xs tabular-nums text-ink-300 sm:block">{formatTime(s.duration)}</span>
-                </button>
-              );
-            })}
-          </div>
+          <div className="overflow-hidden rounded-xl">{resultRows}</div>
         </section>
-      )}    </div>
+      )}
+    </div>
   );
-}
+});

@@ -3,6 +3,7 @@ import { ArrowLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { signInWithGoogle, signInWithPhone, verifyOtp } from '../auth';
 import { PWAInstallBanner } from '../components/PWAInstallBanner';
 import { TermsModal, PrivacyModal } from '../components/LegalModal';
+import { VibifyLogo } from '../components/VibifyLogo';
 
 type Step = 'landing' | 'phone' | 'otp';
 
@@ -19,17 +20,9 @@ function GoogleIcon() {
   );
 }
 
-// ─── Vibify logo mark ─────────────────────────────────────────────────────────
-
+// ─── Vibify logo mark — now uses the real logo image ─────────────────────────
 function VibifyMark({ size = 28 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M9 19V6l12-3v13" stroke="currentColor" strokeWidth="2"
-        strokeLinecap="round" strokeLinejoin="round" className="text-ink-950" />
-      <circle cx="6" cy="19" r="3" fill="currentColor" className="text-ink-950" />
-      <circle cx="18" cy="16" r="3" fill="currentColor" className="text-ink-950" />
-    </svg>
-  );
+  return <VibifyLogo size={size} />;
 }
 
 // ─── Inline error message ─────────────────────────────────────────────────────
@@ -168,8 +161,11 @@ export function LoginView({ onLogin }: LoginViewProps) {
 
         {/* Brand */}
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-brand-400 to-brand-600 shadow-glow">
-            <VibifyMark size={28} />
+          <div className="mx-auto mb-4 flex justify-center">
+            <VibifyLogo
+              size={80}
+              className="drop-shadow-[0_0_32px_rgba(10,220,180,0.55)]"
+            />
           </div>
           <h1 className="font-display text-2xl font-bold text-ink-50">Vibify</h1>
           <p className="mt-1 text-sm text-ink-400">Your music, everywhere</p>

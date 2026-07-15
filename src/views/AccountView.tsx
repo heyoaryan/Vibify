@@ -1,5 +1,5 @@
 import { Clock, Edit3, Headphones, Music2, Star, TrendingUp } from 'lucide-react';
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { useCurrentUser, signOut } from '../auth';
 import { useRecentlyPlayed, useListenStats } from '../history';
 import { NoticeModal } from '../components/NoticeModal';
@@ -29,7 +29,7 @@ function formatListenTime(totalSeconds: number): string {
 
 // ─── component ────────────────────────────────────────────────────────────────
 
-export function AccountView() {
+export const AccountView = memo(function AccountView() {
   const user = useCurrentUser();
   const recentPlays = useRecentlyPlayed();
   const listenStats = useListenStats();
@@ -272,4 +272,4 @@ export function AccountView() {
 
     </div>
   );
-}
+});

@@ -1,10 +1,11 @@
 import { Heart, Play, Pause, Music2 } from 'lucide-react';
+import { memo } from 'react';
 import { useLikes } from '../likes';
 import { usePlayer } from '../player';
 import { Artwork } from '../components/Artwork';
 import { formatTime } from '../lib';
 
-export function LibraryView() {
+export const LibraryView = memo(function LibraryView() {
   const { likedSongs, isLiked, toggle: toggleLike } = useLikes();
   const { playSongs, current, isPlaying, togglePlay, jumpToQueueItem, queue } = usePlayer();
 
@@ -185,4 +186,4 @@ export function LibraryView() {
       </div>
     </div>
   );
-}
+});

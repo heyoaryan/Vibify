@@ -8,6 +8,7 @@ import { TopBar } from './components/TopBar';
 import { PlayerBar } from './components/PlayerBar';
 import { PWAInstallBanner } from './components/PWAInstallBanner';
 import { NoticeModal } from './components/NoticeModal';
+import { VibifyLogo } from './components/VibifyLogo';
 import { useIsLoggedIn } from './auth';
 import { supabase } from './supabase';
 
@@ -145,15 +146,7 @@ function SplashScreen() {
         }}
       />
       {/* Logo mark */}
-      <div className="grid h-16 w-16 place-items-center rounded-2xl
-        bg-gradient-to-br from-brand-400 to-brand-600 shadow-glow animate-pulse">
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path d="M9 19V6l12-3v13" stroke="currentColor" strokeWidth="2"
-            strokeLinecap="round" strokeLinejoin="round" className="text-ink-950" />
-          <circle cx="6" cy="19" r="3" fill="currentColor" className="text-ink-950" />
-          <circle cx="18" cy="16" r="3" fill="currentColor" className="text-ink-950" />
-        </svg>
-      </div>
+      <VibifyLogo size={64} className="animate-pulse drop-shadow-[0_0_24px_rgba(10,168,149,0.6)]" />
       <p className="font-display text-xl font-bold tracking-tight text-ink-50">Vibify</p>
     </div>
   );
