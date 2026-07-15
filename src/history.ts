@@ -222,8 +222,11 @@ export function recordPlay(song: Song) {
 /**
  * Accumulate listening time (call once per second while audio is playing).
  * Batches localStorage writes — only persists every 30 seconds to reduce I/O.
+ * Stats listeners are only notified when the visible value (minutes) changes,
+ * not on every single second tick.
  */
 let _unsavedSeconds = 0;
+let _lastNotifiedMinutes = -1; // track what minute count was last broadcast
 export function addListenSeconds(n: number) {
   _listenSeconds += n;
   _unsavedSeconds += n;
@@ -234,7 +237,14 @@ export function addListenSeconds(n: number) {
     _unsavedSeconds = 0;
   }
 
-  notifyStats();
+  // Only wake up stat-subscribers when the displayed minute value changes
+  // (i.e. every ~60 seconds) instead of every single second.
+  const currentMinutes = Math.floor(_listenSeconds / 60);
+  if (currentMinutes !== _lastNotifiedMinutes) {
+    _lastNotifiedMinutes = currentMinutes;
+    notifyStats();
+  }
+
   scheduleSyncListenSeconds();
 }
 

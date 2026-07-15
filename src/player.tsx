@@ -16,21 +16,25 @@ import { canGuestPlaySong, consumeGuestPlayback } from './auth';
 import { getSettings } from './settings';
 import { recordPlay, addListenSeconds, flushListenSeconds } from './history';
 
-type PlayerState = {
+// ─── Context is split into two parts ─────────────────────────────────────────
+// 1. PlayerContext  — stable state that changes only on song/control changes
+//    (current, queue, isPlaying, volume, repeat, shuffle, actions…)
+//    Components that don't need scrubbing (PlayerBar, HomeView, SearchView…)
+//    subscribe to this one — they DON'T re-render at 60fps.
+//
+// 2. PlaybackContext — high-frequency state (position, duration)
+//    Only components that display a seek bar / lyric sync subscribe to this.
+
+type PlayerContextValue = {
   queue: Song[];
   index: number;
   current: Song | null;
   isPlaying: boolean;
-  position: number;
-  duration: number;
   volume: number;
   muted: boolean;
   repeat: RepeatMode;
   shuffle: boolean;
   hasStarted: boolean;
-};
-
-type PlayerContextValue = PlayerState & {
   playSongs: (list: Song[], startId?: string) => void;
   togglePlay: () => void;
   next: () => void;
@@ -45,12 +49,23 @@ type PlayerContextValue = PlayerState & {
   jumpToQueueItem: (songId: string) => void;
 };
 
+type PlaybackContextValue = {
+  position: number;
+  duration: number;
+};
+
 const PlayerContext = createContext<PlayerContextValue | null>(null);
+const PlaybackContext = createContext<PlaybackContextValue>({ position: 0, duration: 0 });
 
 export function usePlayer(): PlayerContextValue {
   const ctx = useContext(PlayerContext);
   if (!ctx) throw new Error('usePlayer must be used within <PlayerProvider>');
   return ctx;
+}
+
+/** Returns position + duration — updates at ~60fps. Only use where needed (seek bar, lyrics). */
+export function usePlayback(): PlaybackContextValue {
+  return useContext(PlaybackContext);
 }
 
 // ─── Two Audio elements for crossfade ────────────────────────────────────────
@@ -710,21 +725,36 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [index, queue.length, repeat]);
 
+  // Stable player value — does NOT include position/duration so it only
+  // changes when a song actually changes, not every animation frame.
   const value = useMemo<PlayerContextValue>(
     () => ({
-      queue, index, current, isPlaying, position, duration, volume, muted,
+      queue, index, current, isPlaying, volume, muted,
       repeat, shuffle, hasStarted,
       playSongs, togglePlay, next, prev, seek, setVolume, toggleMute,
       cycleRepeat, toggleShuffle, playNext, jumpToQueueItem,
     }),
     [
-      queue, index, current, isPlaying, position, duration, volume, muted,
+      queue, index, current, isPlaying, volume, muted,
       repeat, shuffle, hasStarted, playSongs, togglePlay, next, prev, seek,
       setVolume, toggleMute, cycleRepeat, toggleShuffle, playNext, jumpToQueueItem,
     ],
   );
 
-  return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
+  // High-frequency playback value — updates at ~60fps but only consumed
+  // by components that actually need the seek position.
+  const playback = useMemo<PlaybackContextValue>(
+    () => ({ position, duration }),
+    [position, duration],
+  );
+
+  return (
+    <PlayerContext.Provider value={value}>
+      <PlaybackContext.Provider value={playback}>
+        {children}
+      </PlaybackContext.Provider>
+    </PlayerContext.Provider>
+  );
 }
 
 export function useIsCurrent(id: string): boolean {

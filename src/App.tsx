@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, lazy, Suspense } from 'react';
 import { NavProvider, useNav } from './nav';
 import { PlayerProvider } from './player';
 import { useLyrics } from './useLyrics';
@@ -6,19 +6,28 @@ import { IconRail } from './components/IconRail';
 import { BottomNav } from './components/BottomNav';
 import { TopBar } from './components/TopBar';
 import { PlayerBar } from './components/PlayerBar';
-import { HomeView } from './views/HomeView';
-import { SearchView } from './views/SearchView';
-import { LibraryView } from './views/LibraryView';
-import { PlaylistView } from './views/PlaylistView';
-import { NowPlayingView } from './views/NowPlayingView';
-import { AccountView } from './views/AccountView';
-import { SettingsView } from './views/SettingsView';
-import { PremiumView } from './views/PremiumView';
-import { LoginView } from './views/LoginView';
 import { PWAInstallBanner } from './components/PWAInstallBanner';
 import { NoticeModal } from './components/NoticeModal';
 import { useIsLoggedIn } from './auth';
 import { supabase } from './supabase';
+
+// ─── Lazy-loaded views ────────────────────────────────────────────────────────
+// Each view is only downloaded when first navigated to, keeping the initial
+// JS bundle small and first-paint fast.
+const HomeView       = lazy(() => import('./views/HomeView').then(m => ({ default: m.HomeView })));
+const SearchView     = lazy(() => import('./views/SearchView').then(m => ({ default: m.SearchView })));
+const LibraryView    = lazy(() => import('./views/LibraryView').then(m => ({ default: m.LibraryView })));
+const PlaylistView   = lazy(() => import('./views/PlaylistView').then(m => ({ default: m.PlaylistView })));
+const NowPlayingView = lazy(() => import('./views/NowPlayingView').then(m => ({ default: m.NowPlayingView })));
+const AccountView    = lazy(() => import('./views/AccountView').then(m => ({ default: m.AccountView })));
+const SettingsView   = lazy(() => import('./views/SettingsView').then(m => ({ default: m.SettingsView })));
+const PremiumView    = lazy(() => import('./views/PremiumView').then(m => ({ default: m.PremiumView })));
+const LoginView      = lazy(() => import('./views/LoginView').then(m => ({ default: m.LoginView })));
+
+// Minimal inline fallback — just a dark screen, no spinner flash for fast loads
+function ViewFallback() {
+  return <div className="h-full w-full bg-ink-950" />;
+}
 
 // ─── Background lyrics prefetcher ────────────────────────────────────────────
 // Mounted inside PlayerProvider so it can call usePlayer().
@@ -39,16 +48,24 @@ function ViewRouter({ onNavigate }: { onNavigate: () => void }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
 
-  switch (view.name) {
-    case 'home':     return <HomeView />;
-    case 'search':   return <SearchView />;
-    case 'library':  return <LibraryView />;
-    case 'playlist': return <PlaylistView id={view.id} />;
-    case 'account':  return <AccountView />;
-    case 'settings': return <SettingsView />;
-    case 'premium':  return <PremiumView />;
-    default:         return <HomeView />;
-  }
+  const content = (() => {
+    switch (view.name) {
+      case 'home':     return <HomeView />;
+      case 'search':   return <SearchView />;
+      case 'library':  return <LibraryView />;
+      case 'playlist': return <PlaylistView id={view.id} />;
+      case 'account':  return <AccountView />;
+      case 'settings': return <SettingsView />;
+      case 'premium':  return <PremiumView />;
+      default:         return <HomeView />;
+    }
+  })();
+
+  return (
+    <Suspense fallback={<ViewFallback />}>
+      {content}
+    </Suspense>
+  );
 }
 
 // ─── Now Playing full-screen overlay ─────────────────────────────────────────
@@ -58,7 +75,9 @@ function NowPlayingOverlay() {
   if (view.name !== 'nowplaying') return null;
   return (
     <div className="fixed inset-0 z-50 animate-scale-in">
-      <NowPlayingView />
+      <Suspense fallback={<ViewFallback />}>
+        <NowPlayingView />
+      </Suspense>
     </div>
   );
 }
@@ -169,7 +188,11 @@ export default function App() {
 
   // Unauthenticated — show login page (with PWA install banner inside)
   if (!isLoggedIn) {
-    return <LoginView />;
+    return (
+      <Suspense fallback={<ViewFallback />}>
+        <LoginView />
+      </Suspense>
+    );
   }
 
   // Authenticated — full app shell

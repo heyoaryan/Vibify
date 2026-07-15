@@ -3,7 +3,7 @@ import {
   Pause, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward,
   Share2, ListPlus, User, Info, X, Check, ChevronRight,
 } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo } from 'react';
 
 // ─── Shimmer keyframes — injected once ───────────────────────────────────────
 const NP_KEYFRAMES = `
@@ -29,7 +29,7 @@ function injectNPStyles() {
   _npInjected = true;
 }
 
-import { usePlayer } from '../player';
+import { usePlayer, usePlayback } from '../player';
 import { useNav } from '../nav';
 import { formatTime, gradientStyle } from '../lib';
 import { useLyrics } from '../useLyrics';
@@ -432,12 +432,65 @@ function QueueRow({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// LyricsPanel — subscribes to 60fps PlaybackContext.
+// Isolated so the rest of NowPlayingView doesn't re-render on every position tick.
+// ─────────────────────────────────────────────────────────────────────────────
+import { memo } from 'react';
+
+const LyricsPanel = memo(function LyricsPanel({
+  seek,
+  lyricsLines,
+  lyricsStatus,
+  songTitle,
+}: {
+  seek: (s: number) => void;
+  lyricsLines: import('../lyrics').LyricLine[];
+  lyricsStatus: import('../lyricsApi').LyricsFetchStatus;
+  songTitle: string;
+}) {
+  const { position } = usePlayback();
+  return (
+    <Lyrics
+      lines={lyricsLines}
+      position={position}
+      status={lyricsStatus}
+      onSeek={seek}
+      songTitle={songTitle}
+    />
+  );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SeekBar — subscribes to 60fps PlaybackContext.
+// Isolated so NowPlayingView body doesn't re-render on every position tick.
+// ─────────────────────────────────────────────────────────────────────────────
+const SeekBar = memo(function SeekBar({
+  seek,
+  songDuration,
+}: {
+  seek: (s: number) => void;
+  songDuration: number;
+}) {
+  const { position, duration } = usePlayback();
+  const dur = duration || songDuration;
+  return (
+    <div>
+      <SeekSlider value={position} max={dur} onSeek={seek} ariaLabel="Seek" />
+      <div className="flex justify-between text-[10px] tabular-nums text-white/50 sm:text-xs">
+        <span>{formatTime(position)}</span>
+        <span>{formatTime(dur)}</span>
+      </div>
+    </div>
+  );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Main NowPlayingView
 // ─────────────────────────────────────────────────────────────────────────────
 export function NowPlayingView() {
   injectNPStyles();
   const {
-    current, isPlaying, position, duration,
+    current, isPlaying,
     repeat, shuffle, togglePlay, next, prev,
     seek, cycleRepeat, toggleShuffle, queue, index, jumpToQueueItem,
   } = usePlayer();
@@ -464,8 +517,6 @@ export function NowPlayingView() {
       </div>
     );
   }
-
-  const dur = duration || current.duration;
 
   return (
     <div className="relative flex h-full flex-col overflow-hidden bg-ink-950">
@@ -550,17 +601,13 @@ export function NowPlayingView() {
       <div className="relative flex min-h-0 flex-1 flex-col items-center justify-center gap-3
         px-4 sm:gap-4 sm:px-8 lg:px-16">
 
-        {/* ── LYRICS PANEL
-              Stretched to fill the body area — no background of its own,
-              the NowPlaying gradient/blur shows straight through.
-        ── */}
+        {/* LyricsPanel subscribes to position internally — keeps body from re-rendering at 60fps */}
         {lyricsOpen && (
           <div className="absolute inset-0 z-10">
-            <Lyrics
-              lines={lyricsLines}
-              position={position}
-              status={lyricsStatus}
-              onSeek={seek}
+            <LyricsPanel
+              seek={seek}
+              lyricsLines={lyricsLines}
+              lyricsStatus={lyricsStatus}
               songTitle={current.title}
             />
           </div>
@@ -621,13 +668,8 @@ export function NowPlayingView() {
         style={{ paddingBottom: 'max(32px, env(safe-area-inset-bottom, 32px))' }}
       >
         <div className="mx-auto w-full max-w-xs space-y-2 sm:max-w-[340px] sm:space-y-3 lg:max-w-[380px]">
-          <div>
-            <SeekSlider value={position} max={dur} onSeek={seek} ariaLabel="Seek" />
-            <div className="flex justify-between text-[10px] tabular-nums text-white/50 sm:text-xs">
-              <span>{formatTime(position)}</span>
-              <span>{formatTime(dur)}</span>
-            </div>
-          </div>
+          {/* SeekBar subscribes to position internally */}
+          <SeekBar seek={seek} songDuration={current.duration} />
           <div className="flex items-center justify-between">
             <button onClick={toggleShuffle} aria-label="Shuffle"
               className={`grid h-11 w-11 place-items-center rounded-full transition-colors

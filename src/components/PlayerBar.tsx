@@ -2,12 +2,13 @@ import {
   Heart, Maximize2, Pause, Play,
   Repeat, Repeat1, Shuffle, SkipBack, SkipForward,
 } from 'lucide-react';
+import { memo } from 'react';
 import { usePlayer } from '../player';
 import { useNav } from '../nav';
 import { useLikes } from '../likes';
 import { Artwork } from './Artwork';
 
-export function PlayerBar() {
+export const PlayerBar = memo(function PlayerBar() {
   const {
     current, isPlaying, repeat, shuffle,
     togglePlay, next, prev, cycleRepeat, toggleShuffle,
@@ -142,4 +143,4 @@ export function PlayerBar() {
       </div>
     </div>
   );
-}
+});

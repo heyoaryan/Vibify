@@ -1,5 +1,5 @@
 import { Clock, Flame, Play, Sparkles } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { useRecentlyPlayed } from '../history';
 
 import { usePlayer } from '../player';
@@ -56,18 +56,31 @@ const MOODS = [
   { label: 'Morning Fresh',  query: 'happy morning songs hindi', hue: 45, hue2: 80, icon: '☀️' },
 ];
 
-export function HomeView() {
+// ── Module-level cache so navigating away and back is instant ────────────────
+type HomeCache = {
+  quickPicks: Song[];
+  trending:   Song[];
+  releases:   Song[];
+  madeForYou: Song[];
+  spotlight:  Song | null;
+};
+let _homeCache: HomeCache | null = null;
+
+export const HomeView = memo(function HomeView() {
   const { playSongs, current, isPlaying, togglePlay } = usePlayer();
   const historyPlays = useRecentlyPlayed();
 
-  const [quickPicks, setQuickPicks]   = useState<Song[]>([]);
-  const [trending, setTrending]       = useState<Song[]>([]);
-  const [releases, setReleases]       = useState<Song[]>([]);
-  const [madeForYou, setMadeForYou]   = useState<Song[]>([]);
-  const [spotlight, setSpotlight]     = useState<Song | null>(null);
-  const [loading, setLoading]         = useState(true);
+  const [quickPicks, setQuickPicks]   = useState<Song[]>(_homeCache?.quickPicks ?? []);
+  const [trending, setTrending]       = useState<Song[]>(_homeCache?.trending ?? []);
+  const [releases, setReleases]       = useState<Song[]>(_homeCache?.releases ?? []);
+  const [madeForYou, setMadeForYou]   = useState<Song[]>(_homeCache?.madeForYou ?? []);
+  const [spotlight, setSpotlight]     = useState<Song | null>(_homeCache?.spotlight ?? null);
+  const [loading, setLoading]         = useState(_homeCache === null);
 
   useEffect(() => {
+    // If we already have cached results, skip the network round-trip entirely
+    if (_homeCache !== null) return;
+
     const delay = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
     Promise.all([
       getTrendingSongs(20),
@@ -90,6 +103,9 @@ export function HomeView() {
       mfy.forEach(s => used.add(s.id));
 
       const spot = arijitRaw.find(s => !used.has(s.id)) ?? arijitRaw[0] ?? trendingRaw[0] ?? null;
+
+      // Persist results in module cache
+      _homeCache = { quickPicks: picks, trending: trendingF, releases: releasesF, madeForYou: mfy, spotlight: spot };
 
       setQuickPicks(picks);
       setTrending(trendingF);
@@ -461,4 +477,4 @@ export function HomeView() {
       )}
     </div>
   );
-}
+});
