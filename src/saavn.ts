@@ -262,16 +262,129 @@ function mapSong(raw: JioDetailSong): Song | null {
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 
+/** Deduplicate songs by id then by title+artist */
+function dedupSongs(songs: Song[]): Song[] {
+  const seenIds = new Set<string>();
+  const seenTitleArtist = new Set<string>();
+  const unique: Song[] = [];
+  for (const song of songs) {
+    if (seenIds.has(song.id)) continue;
+    const key = `${song.title.toLowerCase().trim()}|${song.artist.toLowerCase().trim()}`;
+    if (seenTitleArtist.has(key)) continue;
+    seenIds.add(song.id);
+    seenTitleArtist.add(key);
+    unique.push(song);
+  }
+  return unique;
+}
+
+/** Batch-fetch full song details for a list of IDs and return mapped Songs */
+async function fetchSongDetails(ids: string[]): Promise<Song[]> {
+  if (!ids.length) return [];
+  const detailUrl =
+    `${JIOSAAVN_API}?__call=song.getDetails&cc=in&_marker=0&_format=json&pids=${ids.join(',')}`;
+  const res = await fetch(detailUrl);
+  if (!res.ok) throw new Error(`Detail HTTP ${res.status}`);
+  const json: Record<string, JioDetailSong> = await res.json();
+  return Object.values(json)
+    .map(s => mapSong(s))
+    .filter((s): s is Song => s !== null && !!s.src);
+}
+
+// ─── Artist search ────────────────────────────────────────────────────────────
+
+type JioArtist = {
+  artistid: string;
+  name: string;
+};
+
+type JioArtistSearchResponse = {
+  artist_search?: {
+    data?: { results?: JioArtist[] };
+  };
+};
+
+type JioArtistTopSongsResponse = {
+  topSongs?: {
+    songs?: JioDetailSong[];
+  };
+};
+
+/**
+ * Try to find an exact/close artist match on JioSaavn and return their top songs.
+ * Returns null if no confident artist match found.
+ */
+async function getArtistTopSongs(artistQuery: string, limit: number): Promise<Song[] | null> {
+  try {
+    // Step 1 — search for the artist
+    const artistSearchUrl =
+      `${JIOSAAVN_API}?__call=search.getArtistResults&q=${encodeURIComponent(artistQuery)}&p=1&n=5&_format=json&_marker=0&ctx=web6dot0`;
+    const artistRes = await fetch(artistSearchUrl);
+    if (!artistRes.ok) return null;
+
+    const artistJson: JioArtistSearchResponse = await artistRes.json();
+    const artistResults = artistJson?.artist_search?.data?.results;
+    if (!artistResults?.length) return null;
+
+    // Pick the best matching artist — prefer exact name match (case-insensitive)
+    const queryNorm = artistQuery.toLowerCase().trim();
+    const matched =
+      artistResults.find(a => a.name.toLowerCase().trim() === queryNorm) ??
+      artistResults.find(a => a.name.toLowerCase().includes(queryNorm)) ??
+      artistResults.find(a => queryNorm.includes(a.name.toLowerCase())) ??
+      null;
+
+    if (!matched) return null;
+
+    // Step 2 — fetch that artist's top songs
+    const topSongsUrl =
+      `${JIOSAAVN_API}?__call=artist.getTopSongs&artistId=${matched.artistid}&page=0&category=latest&sort_order=desc&includeMetaTags=0&_format=json&_marker=0&ctx=web6dot0`;
+    const topRes = await fetch(topSongsUrl);
+    if (!topRes.ok) return null;
+
+    const topJson: JioArtistTopSongsResponse = await topRes.json();
+    const rawSongs = topJson?.topSongs?.songs;
+    if (!rawSongs?.length) return null;
+
+    // These songs already have full encrypted_media_url — map directly
+    const songs = rawSongs
+      .slice(0, limit)
+      .map(s => mapSong(s as JioDetailSong))
+      .filter((s): s is Song => s !== null && !!s.src);
+
+    return songs.length ? songs : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Search songs by query.
- * Single batch: 1 search call + 1 song.getDetails call (comma-separated IDs).
+ *
+ * Artist detection: if the query looks like a known artist (no song-like words
+ * such as "from", "lyrics", brackets, or common song keywords), we first try
+ * the artist search path which returns only that artist's songs. Falls back to
+ * regular song search if artist search returns nothing.
  */
 export async function searchSongs(query: string, limit = 20): Promise<Song[]> {
   if (!query.trim()) return [];
   try {
-    // Step 1 — search to get IDs
+    // Heuristic: query is likely an artist name if it has no song-specific markers
+    const q = query.trim();
+    const songKeywords = /from|lyrics|song|audio|video|full|official|remix|feat|ft\.|[\[(]/i;
+    const looksLikeArtist = !songKeywords.test(q) && q.split(/\s+/).length <= 4;
+
+    if (looksLikeArtist) {
+      // Try artist path first — returns only that artist's songs
+      const artistSongs = await getArtistTopSongs(q, limit);
+      if (artistSongs && artistSongs.length >= 3) {
+        return dedupSongs(artistSongs);
+      }
+    }
+
+    // Step 1 — regular song search to get IDs
     const searchUrl =
-      `${JIOSAAVN_API}?__call=search.getResults&q=${encodeURIComponent(query)}&p=1&n=${limit}&_format=json&_marker=0&ctx=web6dot0`;
+      `${JIOSAAVN_API}?__call=search.getResults&q=${encodeURIComponent(q)}&p=1&n=${limit}&_format=json&_marker=0&ctx=web6dot0`;
     const searchRes = await fetch(searchUrl);
     if (!searchRes.ok) throw new Error(`Search HTTP ${searchRes.status}`);
 
@@ -279,39 +392,20 @@ export async function searchSongs(query: string, limit = 20): Promise<Song[]> {
     const results = searchJson?.results;
     if (!results?.length) return [];
 
-    const ids = results.map(r => r.id).join(',');
+    // Step 2 — batch fetch full details
+    const songs = await fetchSongDetails(results.map(r => r.id));
 
-    // Step 2 — batch fetch full details (gets full encrypted_media_url)
-    const detailUrl =
-      `${JIOSAAVN_API}?__call=song.getDetails&cc=in&_marker=0&_format=json&pids=${ids}`;
-    const detailRes = await fetch(detailUrl);
-    if (!detailRes.ok) throw new Error(`Detail HTTP ${detailRes.status}`);
-
-    const detailJson: Record<string, JioDetailSong> = await detailRes.json();
-
-    const songs = Object.values(detailJson)
-      .map(s => mapSong(s))
-      .filter((s): s is Song => s !== null && !!s.src);
-
-    // Deduplicate by ID first, then by (normalized title + artist) to catch
-    // same song returned under different IDs
-    const seenIds = new Set<string>();
-    const seenTitleArtist = new Set<string>();
-    const unique: Song[] = [];
-
-    for (const song of songs) {
-      if (seenIds.has(song.id)) continue;
-
-      const key = `${song.title.toLowerCase().trim()}|${song.artist.toLowerCase().trim()}`;
-      if (seenTitleArtist.has(key)) continue;
-
-      seenIds.add(song.id);
-      seenTitleArtist.add(key);
-      unique.push(song);
+    // If query looks like an artist, sort: artist's songs first
+    if (looksLikeArtist) {
+      const qNorm = q.toLowerCase();
+      songs.sort((a, b) => {
+        const aMatch = a.artist.toLowerCase().includes(qNorm) ? 0 : 1;
+        const bMatch = b.artist.toLowerCase().includes(qNorm) ? 0 : 1;
+        return aMatch - bMatch;
+      });
     }
 
-    return unique;
-
+    return dedupSongs(songs);
   } catch (error) {
     console.error('searchSongs error:', error);
     return [];
@@ -328,8 +422,12 @@ export async function getNewReleases(limit = 20): Promise<Song[]> {
   return searchSongs('new hindi songs 2025', limit);
 }
 
-/** Top songs by artist */
+/** Top songs by artist — uses artist search path for accurate results */
 export async function getArtistSongs(artistName: string, limit = 10): Promise<Song[]> {
+  // Try dedicated artist path first
+  const artistSongs = await getArtistTopSongs(artistName, limit);
+  if (artistSongs && artistSongs.length > 0) return dedupSongs(artistSongs);
+  // Fallback to generic search
   return searchSongs(artistName, limit);
 }
 

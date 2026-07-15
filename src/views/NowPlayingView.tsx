@@ -435,8 +435,6 @@ function QueueRow({
 // LyricsPanel — subscribes to 60fps PlaybackContext.
 // Isolated so the rest of NowPlayingView doesn't re-render on every position tick.
 // ─────────────────────────────────────────────────────────────────────────────
-import { memo } from 'react';
-
 const LyricsPanel = memo(function LyricsPanel({
   seek,
   lyricsLines,

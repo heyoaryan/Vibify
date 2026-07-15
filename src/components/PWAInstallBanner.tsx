@@ -1,28 +1,21 @@
 /**
  * PWAInstallBanner
  *
- * Shows a contextual "Install Vibify" prompt that works on every platform:
+ * Android / Desktop (beforeinstallprompt):
+ *   1. Shows "Install Vibify" card
+ *   2. User taps Install → native prompt fires
+ *   3. If accepted → animated progress bar fills to 100%
+ *   4. "Open App" button appears → tapping it focuses/opens the PWA
  *
- *  Android / Chrome / Edge / Samsung Internet
- *    → Uses the native beforeinstallprompt API — one-tap install button.
+ * iOS Safari:
+ *   → No install API; shows step-by-step Share → Add to Home Screen guide.
  *
- *  iOS / iPadOS (Safari)
- *    → beforeinstallprompt never fires on WebKit; we detect iOS + non-standalone
- *      and show a step-by-step "Add to Home Screen" guide instead.
- *
- *  macOS (Chrome / Edge / Brave)
- *    → Same beforeinstallprompt path as Android; shows install button.
- *
- *  Already installed (any platform)
- *    → display-mode: standalone OR navigator.standalone — banner is hidden.
- *
- *  Dismissed
- *    → Stored in sessionStorage so it doesn't pop up again this session.
- *      On next visit it may show again (intentional — no permanent cookie spam).
+ * Already installed:
+ *   → Banner is hidden.
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { Download, Share, X, Plus } from 'lucide-react';
+import { Download, ExternalLink, Share, X, Plus, CheckCircle } from 'lucide-react';
 import { VibifyLogo } from './VibifyLogo';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -32,10 +25,12 @@ type BeforeInstallPromptEvent = Event & {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
 };
 
-type BannerMode =
-  | 'hidden'          // not shown
-  | 'native'          // Android / Desktop — native prompt available
-  | 'ios-guide';      // iOS Safari — manual "Share → Add to Home Screen"
+type BannerState =
+  | 'hidden'
+  | 'native'       // show install button
+  | 'installing'   // progress bar animating
+  | 'installed'    // show "Open App" button
+  | 'ios-guide';   // iOS Safari manual steps
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -47,7 +42,6 @@ function isAlreadyInstalled(): boolean {
 }
 
 function isIOS(): boolean {
-  // Covers iPhone, iPad (both old UA and new iPad UA), iPod
   return (
     /iphone|ipad|ipod/i.test(navigator.userAgent) ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
@@ -55,14 +49,14 @@ function isIOS(): boolean {
 }
 
 function isIOSSafari(): boolean {
-  // WebKit on iOS — not Chrome/Firefox for iOS (they can't install PWAs either,
-  // but Safari is the only one that can add to home screen)
-  return isIOS() && /safari/i.test(navigator.userAgent) && !/crios|fxios|opios/i.test(navigator.userAgent);
+  return (
+    isIOS() &&
+    /safari/i.test(navigator.userAgent) &&
+    !/crios|fxios|opios/i.test(navigator.userAgent)
+  );
 }
 
 const DISMISS_KEY = 'vibify-pwa-dismissed';
-
-// In development, force-show the banner by adding ?pwa=1 to the URL
 const DEV_FORCE =
   import.meta.env.DEV &&
   new URLSearchParams(window.location.search).get('pwa') === '1';
@@ -70,61 +64,99 @@ const DEV_FORCE =
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function PWAInstallBanner({ standalone = false }: { standalone?: boolean }) {
-  const [mode, setMode] = useState<BannerMode>('hidden');
+  const [state, setState] = useState<BannerState>('hidden');
+  // progress: 0–100
+  const [progress, setProgress] = useState(0);
   const promptRef = useRef<BeforeInstallPromptEvent | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const startRef = useRef<number | null>(null);
 
-  // bottom class: when standalone=true (login page, no player bar) use bottom-6,
-  // otherwise bottom-24 to sit above the player bar
   const bottomCls = standalone ? 'bottom-6 sm:bottom-8' : 'bottom-24 sm:bottom-28';
 
   useEffect(() => {
-    // Already running as PWA — never show (skip in forced dev preview)
     if (!DEV_FORCE && isAlreadyInstalled()) return;
-
-    // User dismissed it this session — don't nag (skip in forced dev preview)
     if (!DEV_FORCE && sessionStorage.getItem(DISMISS_KEY)) return;
 
-    // iOS Safari path — no API, show manual guide
     if (isIOSSafari() || (DEV_FORCE && new URLSearchParams(window.location.search).get('pwa') === 'ios')) {
-      const t = setTimeout(() => setMode('ios-guide'), DEV_FORCE ? 500 : 2500);
+      const t = setTimeout(() => setState('ios-guide'), DEV_FORCE ? 500 : 2500);
       return () => clearTimeout(t);
     }
 
-    // Dev force-preview: show native banner immediately
-    if (DEV_FORCE) {
-      setMode('native');
-      return;
-    }
+    if (DEV_FORCE) { setState('native'); return; }
 
-    // Android / Desktop — wait for the browser's beforeinstallprompt event
     const handler = (e: Event) => {
       e.preventDefault();
       promptRef.current = e as BeforeInstallPromptEvent;
-      setMode('native');
+      setState('native');
     };
     window.addEventListener('beforeinstallprompt', handler);
     return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
 
+  // Cancel rAF on unmount
+  useEffect(() => () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); }, []);
+
   const dismiss = () => {
-    setMode('hidden');
+    setState('hidden');
     sessionStorage.setItem(DISMISS_KEY, '1');
+  };
+
+  // Animate progress bar from 0 → 100 over ~2.4 s with easing
+  const animateProgress = () => {
+    startRef.current = null;
+    const DURATION = 2400; // ms
+
+    const tick = (ts: number) => {
+      if (startRef.current === null) startRef.current = ts;
+      const elapsed = ts - startRef.current;
+      const t = Math.min(elapsed / DURATION, 1);
+      // ease-out-cubic
+      const eased = 1 - Math.pow(1 - t, 3);
+      setProgress(Math.round(eased * 100));
+
+      if (t < 1) {
+        rafRef.current = requestAnimationFrame(tick);
+      } else {
+        setState('installed');
+      }
+    };
+
+    rafRef.current = requestAnimationFrame(tick);
   };
 
   const handleNativeInstall = async () => {
     if (!promptRef.current) return;
+
+    setState('installing');
+    setProgress(0);
+
     await promptRef.current.prompt();
     const { outcome } = await promptRef.current.userChoice;
+    promptRef.current = null;
+
     if (outcome === 'accepted') {
-      setMode('hidden');
-      promptRef.current = null;
+      animateProgress();
+    } else {
+      // User cancelled — go back to install button
+      setState('native');
+      setProgress(0);
     }
   };
 
-  if (mode === 'hidden') return null;
+  const handleOpenApp = () => {
+    // Try to focus an existing PWA window first, otherwise open it
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage({ type: 'OPEN_APP' });
+    }
+    // Fallback: open the start_url in a new tab — OS will route it to the PWA
+    window.open('/?source=pwa', '_blank');
+    setState('hidden');
+  };
+
+  if (state === 'hidden') return null;
 
   // ── iOS guide ──────────────────────────────────────────────────────────────
-  if (mode === 'ios-guide') {
+  if (state === 'ios-guide') {
     return (
       <div
         role="dialog"
@@ -133,7 +165,6 @@ export function PWAInstallBanner({ standalone = false }: { standalone?: boolean 
         className={`fixed ${bottomCls} left-1/2 z-[90] w-[92%] max-w-sm -translate-x-1/2`}
       >
         <div className="rounded-2xl border border-white/10 bg-ink-900/95 p-4 shadow-2xl shadow-black/60 backdrop-blur-xl">
-          {/* Header */}
           <div className="mb-3 flex items-center gap-3">
             <VibifyLogo size={40} className="shrink-0" />
             <div className="flex-1">
@@ -148,8 +179,6 @@ export function PWAInstallBanner({ standalone = false }: { standalone?: boolean 
               <X size={14} />
             </button>
           </div>
-
-          {/* Steps */}
           <ol className="space-y-2.5" aria-label="Installation steps">
             <li className="flex items-center gap-3">
               <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand-500/20 text-[11px] font-bold text-brand-300">1</span>
@@ -170,13 +199,93 @@ export function PWAInstallBanner({ standalone = false }: { standalone?: boolean 
               </span>
             </li>
           </ol>
-
-          {/* Pointer arrow pointing down toward Safari tab bar */}
           <div className="mt-3 flex justify-center">
             <svg width="18" height="10" viewBox="0 0 18 10" fill="none" aria-hidden="true">
-              <path d="M1 1l8 8 8-8" stroke="#34d9b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M1 1l8 8 8-8" stroke="#34dcc2" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Installing — progress bar ──────────────────────────────────────────────
+  if (state === 'installing') {
+    return (
+      <div
+        role="status"
+        aria-label="Installing Vibify"
+        aria-live="polite"
+        className={`fixed ${bottomCls} left-1/2 z-[90] w-[92%] max-w-sm -translate-x-1/2 rounded-2xl border border-white/10 bg-ink-900/95 px-4 py-3.5 shadow-2xl shadow-black/60 backdrop-blur-xl`}
+      >
+        <div className="flex items-center gap-3 mb-3">
+          <VibifyLogo size={40} className="shrink-0" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-ink-50">Installing Vibify…</p>
+            <p className="text-xs text-ink-400">Adding to your home screen</p>
+          </div>
+          <span className="shrink-0 text-sm font-bold tabular-nums text-brand-400">
+            {progress}%
+          </span>
+        </div>
+
+        {/* Progress bar */}
+        <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+          <div
+            className="absolute left-0 top-0 h-full rounded-full bg-gradient-to-r from-brand-500 to-brand-300 transition-none"
+            style={{ width: `${progress}%` }}
+            aria-hidden="true"
+          />
+          {/* Shimmer overlay */}
+          <div
+            className="absolute inset-0 rounded-full"
+            style={{
+              background:
+                'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.25) 50%, transparent 100%)',
+              animation: 'progressShimmer 1.2s ease-in-out infinite',
+            }}
+            aria-hidden="true"
+          />
+        </div>
+
+        <style>{`
+          @keyframes progressShimmer {
+            0%   { transform: translateX(-100%); }
+            100% { transform: translateX(200%); }
+          }
+        `}</style>
+      </div>
+    );
+  }
+
+  // ── Installed — open button ────────────────────────────────────────────────
+  if (state === 'installed') {
+    return (
+      <div
+        role="status"
+        aria-live="polite"
+        aria-label="Vibify installed"
+        className={`fixed ${bottomCls} left-1/2 z-[90] w-[92%] max-w-sm -translate-x-1/2 rounded-2xl border border-brand-500/30 bg-ink-900/95 px-4 py-3.5 shadow-2xl shadow-black/60 backdrop-blur-xl animate-fade-up`}
+      >
+        <div className="flex items-center gap-3">
+          <div className="relative shrink-0">
+            <VibifyLogo size={40} />
+            {/* Green tick badge */}
+            <span className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-brand-500 ring-2 ring-ink-900">
+              <CheckCircle size={10} className="text-ink-950" />
+            </span>
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-brand-300">App Installed!</p>
+            <p className="text-xs text-ink-400">Vibify is on your home screen</p>
+          </div>
+          <button
+            onClick={handleOpenApp}
+            className="flex shrink-0 items-center gap-1.5 rounded-full bg-brand-500 px-3 py-1.5 text-xs font-semibold text-ink-950 transition hover:bg-brand-400 active:scale-95"
+          >
+            <ExternalLink size={12} aria-hidden="true" />
+            Open
+          </button>
         </div>
       </div>
     );

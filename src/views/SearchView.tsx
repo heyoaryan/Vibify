@@ -264,11 +264,6 @@ export const SearchView = memo(function SearchView() {
   }, []);
 
   // ── Debounced search — 350ms, with cache + prefix expansion ──────────────
-  // If user types a short partial word (≥4 chars, no space), we append a
-  // wildcard-style expansion so JioSaavn returns broader results.
-  // e.g.  "arij"  → API gets "arijit"  (first 4 chars → try common expansion)
-  //        "dil"  → too short, just send as-is
-  //        "dilb" → send "dilb" — JioSaavn handles prefix search well
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     const q = query.trim();
@@ -285,26 +280,17 @@ export const SearchView = memo(function SearchView() {
 
     setLoading(true);
 
-    // Build the actual API query.
-    // JioSaavn does native prefix search — "arij" already returns "Arijit Singh".
-    // For short partial words (4–7 chars, single token), we also merge local
-    // results so even offline/data-limited users get partial matches.
-    const tokens = q.split(/\s+/).filter(Boolean);
-    const isSinglePartial = tokens.length === 1 && tokens[0].length >= 4 && tokens[0].length <= 7;
-    const apiQuery = q;
-
     debounceRef.current = setTimeout(async () => {
       try {
-        const remote = await searchSongs(apiQuery, 20);
+        // Fetch more results for artist queries so user gets a full discography feel
+        const remote = await searchSongs(q, 30);
 
-        // If partial single word AND remote results are few, merge local results
+        // If few remote results, supplement with local
         let merged = remote;
-        if (isSinglePartial || remote.length < 5) {
+        if (remote.length < 5) {
           const local = localSearch(q, 20);
-          // Combine: remote first (more accurate), then local extras not already in remote
           const remoteIds = new Set(remote.map(s => s.id));
-          const extras = local.filter(s => !remoteIds.has(s.id));
-          merged = [...remote, ...extras];
+          merged = [...remote, ...local.filter(s => !remoteIds.has(s.id))];
         }
 
         const next = deduplicateSongs(merged.length > 0 ? merged : localSearch(q, 20));
@@ -522,7 +508,28 @@ export const SearchView = memo(function SearchView() {
       {!loading && results.length > 0 && (
         <section>
           <h2 className="mb-3 font-display text-lg font-bold text-ink-50 sm:text-xl">
-            Songs <span className="ml-2 text-sm font-normal text-ink-400">{results.length} results</span>
+            {(() => {
+              // Check if majority of results are from one artist (artist search)
+              if (results.length >= 3) {
+                const q = query.trim().toLowerCase();
+                const artistMatch = results.filter(s =>
+                  s.artist.toLowerCase().includes(q)
+                );
+                if (artistMatch.length >= Math.ceil(results.length * 0.6)) {
+                  return (
+                    <>
+                      Songs by <span className="text-brand-400">{results[0].artist}</span>
+                      <span className="ml-2 text-sm font-normal text-ink-400">{results.length} songs</span>
+                    </>
+                  );
+                }
+              }
+              return (
+                <>
+                  Results <span className="ml-2 text-sm font-normal text-ink-400">{results.length} songs</span>
+                </>
+              );
+            })()}
           </h2>
           <div className="overflow-hidden rounded-xl">{resultRows}</div>
         </section>
