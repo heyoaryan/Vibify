@@ -7,6 +7,7 @@ import { BottomNav } from './components/BottomNav';
 import { TopBar } from './components/TopBar';
 import { PlayerBar } from './components/PlayerBar';
 import { PWAInstallBanner } from './components/PWAInstallBanner';
+import { PWAInstallProvider } from './pwaInstall';
 import { NoticeModal } from './components/NoticeModal';
 import { VibifyLogo } from './components/VibifyLogo';
 import { useIsLoggedIn } from './auth';
@@ -55,7 +56,7 @@ function ViewRouter({ onNavigate }: { onNavigate: () => void }) {
       case 'home':     return <HomeView />;
       case 'search':   return <SearchView />;
       case 'library':  return <LibraryView />;
-case 'playlist': return <PlaylistView id={view.id} />;
+ case 'playlist': return <PlaylistView id={view.id} />;
       case 'room':     return <RoomView />;
       case 'account':  return <AccountView />;
       case 'settings': return <SettingsView />;
@@ -125,7 +126,7 @@ function Shell() {
       {/* Now Playing fullscreen */}
       <NowPlayingOverlay />
 
-      {/* PWA install banner */}
+      {/* PWA install banner (iOS guide + standalone card) */}
       <PWAInstallBanner />
     </div>
   );
@@ -185,26 +186,30 @@ export default function App() {
   // Unauthenticated — show login page (with PWA install banner inside)
   if (!isLoggedIn) {
     return (
-      <Suspense fallback={<ViewFallback />}>
-        <LoginView />
-      </Suspense>
+      <PWAInstallProvider>
+        <Suspense fallback={<ViewFallback />}>
+          <LoginView />
+        </Suspense>
+      </PWAInstallProvider>
     );
   }
 
   // Authenticated — full app shell
   return (
-    <NavProvider>
-      <PlayerProvider>
-        <LyricsPrefetcher />
-        <Shell />
-        <NoticeModal
-          open={guestLimitOpen}
-          onClose={() => setGuestLimitOpen(false)}
-          title="Guest limit reached"
-        >
-          Guest users can listen to 5 songs per hour. Sign in to keep listening without limits.
-        </NoticeModal>
-      </PlayerProvider>
-    </NavProvider>
+    <PWAInstallProvider>
+      <NavProvider>
+        <PlayerProvider>
+          <LyricsPrefetcher />
+          <Shell />
+          <NoticeModal
+            open={guestLimitOpen}
+            onClose={() => setGuestLimitOpen(false)}
+            title="Guest limit reached"
+          >
+            Guest users can listen to 5 songs per hour. Sign in to keep listening without limits.
+          </NoticeModal>
+        </PlayerProvider>
+      </NavProvider>
+    </PWAInstallProvider>
   );
 }

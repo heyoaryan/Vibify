@@ -1,159 +1,35 @@
 /**
  * PWAInstallBanner
  *
- * Android / Desktop (beforeinstallprompt):
- *   1. Shows "Install Vibify" card
- *   2. User taps Install → native prompt fires
- *   3. If accepted → animated progress bar fills to 100%
- *   4. "Open App" button appears → tapping it focuses/opens the PWA
+ * Bottom-of-screen card for PWA install. Two modes:
  *
- * iOS Safari:
- *   → No install API; shows step-by-step Share → Add to Home Screen guide.
+ *  - Default (in app shell): only renders the iOS Safari manual guide, because
+ *    the actual Install button lives inline (sidebar on desktop, top bar on
+ *    mobile) via <InstallButton />.
  *
- * Already installed:
- *   → Banner is hidden.
+ *  - standalone (login screen): no inline button exists, so the native
+ *    Install / Installing / Installed card is also shown here.
+ *
+ *  iOS Safari (all modes): shows the step-by-step Share → Add to Home Screen
+ *  guide, since there is no install API.
  */
 
-import { useEffect, useRef, useState } from 'react';
-import { Download, ExternalLink, Share, X, Plus, CheckCircle } from 'lucide-react';
+import { CheckCircle, Download, ExternalLink, Plus, Share, X } from 'lucide-react';
 import { VibifyLogo } from './VibifyLogo';
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-type BeforeInstallPromptEvent = Event & {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
-};
-
-type BannerState =
-  | 'hidden'
-  | 'native'       // show install button
-  | 'installing'   // progress bar animating
-  | 'installed'    // show "Open App" button
-  | 'ios-guide';   // iOS Safari manual steps
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function isAlreadyInstalled(): boolean {
-  return (
-    window.matchMedia('(display-mode: standalone)').matches ||
-    (window.navigator as { standalone?: boolean }).standalone === true
-  );
-}
-
-function isIOS(): boolean {
-  return (
-    /iphone|ipad|ipod/i.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-  );
-}
-
-function isIOSSafari(): boolean {
-  return (
-    isIOS() &&
-    /safari/i.test(navigator.userAgent) &&
-    !/crios|fxios|opios/i.test(navigator.userAgent)
-  );
-}
-
-const DISMISS_KEY = 'vibify-pwa-dismissed';
-const DEV_FORCE =
-  import.meta.env.DEV &&
-  new URLSearchParams(window.location.search).get('pwa') === '1';
-
-// ─── Component ────────────────────────────────────────────────────────────────
+import { usePWAInstall } from '../pwaInstall';
 
 export function PWAInstallBanner({ standalone = false }: { standalone?: boolean }) {
-  const [state, setState] = useState<BannerState>('hidden');
-  // progress: 0–100
-  const [progress, setProgress] = useState(0);
-  const promptRef = useRef<BeforeInstallPromptEvent | null>(null);
-  const rafRef = useRef<number | null>(null);
-  const startRef = useRef<number | null>(null);
+  const { state, progress, showBannerCard, install, openApp, dismiss } = usePWAInstall();
+
+  // In-app: only the iOS guide goes in the banner (inline button handles the rest).
+  // standalone: also show the native install/installing/installed card.
+  const showCard =
+    showBannerCard ||
+    (standalone && (state === 'available' || state === 'installing' || state === 'installed'));
+
+  if (!showCard) return null;
 
   const bottomCls = standalone ? 'bottom-6 sm:bottom-8' : 'bottom-24 sm:bottom-28';
-
-  useEffect(() => {
-    if (!DEV_FORCE && isAlreadyInstalled()) return;
-    if (!DEV_FORCE && sessionStorage.getItem(DISMISS_KEY)) return;
-
-    if (isIOSSafari() || (DEV_FORCE && new URLSearchParams(window.location.search).get('pwa') === 'ios')) {
-      const t = setTimeout(() => setState('ios-guide'), DEV_FORCE ? 500 : 2500);
-      return () => clearTimeout(t);
-    }
-
-    if (DEV_FORCE) { setState('native'); return; }
-
-    const handler = (e: Event) => {
-      e.preventDefault();
-      promptRef.current = e as BeforeInstallPromptEvent;
-      setState('native');
-    };
-    window.addEventListener('beforeinstallprompt', handler);
-    return () => window.removeEventListener('beforeinstallprompt', handler);
-  }, []);
-
-  // Cancel rAF on unmount
-  useEffect(() => () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); }, []);
-
-  const dismiss = () => {
-    setState('hidden');
-    sessionStorage.setItem(DISMISS_KEY, '1');
-  };
-
-  // Animate progress bar from 0 → 100 over ~2.4 s with easing
-  const animateProgress = () => {
-    startRef.current = null;
-    const DURATION = 2400; // ms
-
-    const tick = (ts: number) => {
-      if (startRef.current === null) startRef.current = ts;
-      const elapsed = ts - startRef.current;
-      const t = Math.min(elapsed / DURATION, 1);
-      // ease-out-cubic
-      const eased = 1 - Math.pow(1 - t, 3);
-      setProgress(Math.round(eased * 100));
-
-      if (t < 1) {
-        rafRef.current = requestAnimationFrame(tick);
-      } else {
-        setState('installed');
-      }
-    };
-
-    rafRef.current = requestAnimationFrame(tick);
-  };
-
-  const handleNativeInstall = async () => {
-    if (!promptRef.current) return;
-
-    setState('installing');
-    setProgress(0);
-
-    await promptRef.current.prompt();
-    const { outcome } = await promptRef.current.userChoice;
-    promptRef.current = null;
-
-    if (outcome === 'accepted') {
-      animateProgress();
-    } else {
-      // User cancelled — go back to install button
-      setState('native');
-      setProgress(0);
-    }
-  };
-
-  const handleOpenApp = () => {
-    // Try to focus an existing PWA window first, otherwise open it
-    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-      navigator.serviceWorker.controller.postMessage({ type: 'OPEN_APP' });
-    }
-    // Fallback: open the start_url in a new tab — OS will route it to the PWA
-    window.open('/?source=pwa', '_blank');
-    setState('hidden');
-  };
-
-  if (state === 'hidden') return null;
 
   // ── iOS guide ──────────────────────────────────────────────────────────────
   if (state === 'ios-guide') {
@@ -209,7 +85,7 @@ export function PWAInstallBanner({ standalone = false }: { standalone?: boolean 
     );
   }
 
-  // ── Installing — progress bar ──────────────────────────────────────────────
+  // ── Installing — progress bar (standalone only) ────────────────────────────
   if (state === 'installing') {
     return (
       <div
@@ -228,15 +104,12 @@ export function PWAInstallBanner({ standalone = false }: { standalone?: boolean 
             {progress}%
           </span>
         </div>
-
-        {/* Progress bar */}
         <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-white/10">
           <div
             className="absolute left-0 top-0 h-full rounded-full bg-gradient-to-r from-brand-500 to-brand-300 transition-none"
             style={{ width: `${progress}%` }}
             aria-hidden="true"
           />
-          {/* Shimmer overlay */}
           <div
             className="absolute inset-0 rounded-full"
             style={{
@@ -247,7 +120,6 @@ export function PWAInstallBanner({ standalone = false }: { standalone?: boolean 
             aria-hidden="true"
           />
         </div>
-
         <style>{`
           @keyframes progressShimmer {
             0%   { transform: translateX(-100%); }
@@ -258,7 +130,7 @@ export function PWAInstallBanner({ standalone = false }: { standalone?: boolean 
     );
   }
 
-  // ── Installed — open button ────────────────────────────────────────────────
+  // ── Installed — open button (standalone only) ──────────────────────────────
   if (state === 'installed') {
     return (
       <div
@@ -270,7 +142,6 @@ export function PWAInstallBanner({ standalone = false }: { standalone?: boolean 
         <div className="flex items-center gap-3">
           <div className="relative shrink-0">
             <VibifyLogo size={40} />
-            {/* Green tick badge */}
             <span className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-brand-500 ring-2 ring-ink-900">
               <CheckCircle size={10} className="text-ink-950" />
             </span>
@@ -280,7 +151,7 @@ export function PWAInstallBanner({ standalone = false }: { standalone?: boolean 
             <p className="text-xs text-ink-400">Vibify is on your home screen</p>
           </div>
           <button
-            onClick={handleOpenApp}
+            onClick={openApp}
             className="flex shrink-0 items-center gap-1.5 rounded-full bg-brand-500 px-3 py-1.5 text-xs font-semibold text-ink-950 transition hover:bg-brand-400 active:scale-95"
           >
             <ExternalLink size={12} aria-hidden="true" />
@@ -291,7 +162,7 @@ export function PWAInstallBanner({ standalone = false }: { standalone?: boolean 
     );
   }
 
-  // ── Native install prompt (Android / Desktop) ──────────────────────────────
+  // ── Native install prompt (standalone only) ────────────────────────────────
   return (
     <div
       role="dialog"
@@ -307,7 +178,7 @@ export function PWAInstallBanner({ standalone = false }: { standalone?: boolean 
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <button
-            onClick={handleNativeInstall}
+            onClick={install}
             className="flex items-center gap-1.5 rounded-full bg-brand-500 px-3 py-1.5 text-xs font-semibold text-ink-950 transition hover:bg-brand-400 active:scale-95"
           >
             <Download size={13} aria-hidden="true" />

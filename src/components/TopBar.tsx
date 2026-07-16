@@ -2,6 +2,7 @@ import { ArrowLeft } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useNav } from '../nav';
 import { UserAvatar } from './UserAvatar';
+import { InstallButton } from './InstallButton';
 
 export function TopBar() {
   const { canGoBack, back, view, navigate } = useNav();
@@ -57,8 +58,10 @@ export function TopBar() {
 
       <div className="flex-1" />
 
-      {/* Mobile / tablet: account avatar → dropdown */}
-      <div ref={dropdownRef} className="relative lg:hidden">
+      {/* Mobile / tablet: inline install button (left of pfp) + account avatar → dropdown */}
+      <div ref={dropdownRef} className="relative flex items-center gap-2 lg:hidden">
+        <InstallButton className="shrink-0" />
+
         {/* Avatar — 44×44 touch target (up from the old 32/36px) */}
         <button
           aria-label="Account menu"

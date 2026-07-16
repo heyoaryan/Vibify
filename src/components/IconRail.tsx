@@ -3,6 +3,7 @@ import { useCurrentUser } from '../auth';
 import { UserAvatar } from './UserAvatar';
 import { VibifyLogo } from './VibifyLogo';
 import { useNav } from '../nav';
+import { InstallButton } from './InstallButton';
 import type { NavSection } from '../types';
 
 const navItems: { id: NavSection; label: string; icon: typeof Home }[] = [
@@ -91,8 +92,11 @@ export function IconRail({
           {expanded && <span className="text-sm">Room</span>}
         </button>
 
-       {/* Bottom: Account first, then Settings below */}
+       {/* Bottom: Account, then Settings, then inline Install */}
       <div className="mt-auto flex flex-col gap-2">
+        {/* Inline install — desktop sidebar */}
+        <InstallButton className={`w-full ${expanded ? 'justify-start px-3' : 'justify-center px-0'}`} />
+
         {/* Account */}
         <button
           onClick={() => { navigate({ name: 'account' }); onClose?.(); }}
