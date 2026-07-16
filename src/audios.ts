@@ -10,7 +10,7 @@
 
 import type { Song } from './types';
 
-const AUDIOMACK_API = 'https://api.audiomack.com/v1';
+const AUDIOMACK_API = '/api/audiomack';
 
 type AudiomackTrack = {
   id: number;

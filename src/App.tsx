@@ -91,6 +91,7 @@ function Shell() {
   const mainRef = useRef<HTMLElement>(null);
   const scrollToTop = () =>
     mainRef.current?.scrollTo({ top: 0, behavior: 'instant' });
+  const { view } = useNav();
 
   return (
     <div className="relative flex h-[100dvh] flex-col overflow-hidden bg-ink-950 text-ink-50">
@@ -115,8 +116,8 @@ function Shell() {
         </main>
       </div>
 
-      {/* Player bar */}
-      <PlayerBar />
+      {/* Player bar — hidden in room view */}
+      {view.name !== 'room' && <PlayerBar />}
 
       {/* Bottom nav — mobile/tablet only */}
       <BottomNav />

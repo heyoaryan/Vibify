@@ -208,7 +208,7 @@ export function isGuestUser(): boolean {
 }
 
 export function getGuestPlaybackStatus() {
-  let s = resetGuestIfStale(loadGuestPlayback());
+  const s = resetGuestIfStale(loadGuestPlayback());
   const remaining = Math.max(0, GUEST_LIMIT - s.count);
   const resetAt = s.startedAt + GUEST_WINDOW_MS;
   return { remaining, resetAt, limit: GUEST_LIMIT };

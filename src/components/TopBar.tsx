@@ -13,7 +13,7 @@ export function TopBar() {
     : view.name === 'search'   ? 'Search'
     : view.name === 'library'  ? 'Library'
 : view.name === 'playlist' ? 'Playlist'
-     : view.name === 'room'     ? 'Listening Room'
+      : view.name === 'room'     ? 'Room'
      : view.name === 'account'  ? 'Account'
     : view.name === 'settings' ? 'Settings'
     : 'Now Playing';

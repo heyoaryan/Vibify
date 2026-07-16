@@ -77,7 +77,7 @@ export function IconRail({
         <button
           onClick={() => { navigate({ name: 'room' }); onClose?.(); }}
           aria-label="Room"
-          title="Listening Room"
+           title="Room"
           className={`group relative flex items-center gap-4 rounded-xl py-3 font-semibold transition-all duration-200 ${
             view.name === 'room'
               ? 'bg-brand-500/15 text-brand-300'
