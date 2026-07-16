@@ -1,6 +1,7 @@
 {
   "rewrites": [
     { "source": "/jiosaavn/api.php", "destination": "/api/jiosaavn" },
+    { "source": "/api/audiomack/:path*", "destination": "/api/audiomack" },
     { "source": "/lrclib/:path*",    "destination": "/api/lrclib"    },
     { "source": "/lyricsovh/:path*", "destination": "/api/lyricsovh" },
     { "source": "/(.*)",             "destination": "/index.html"    }

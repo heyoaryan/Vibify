@@ -1,11 +1,17 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 const UPSTREAM = 'https://api.audiomack.com/v1';
+const CONSUMER_KEY = process.env.AUDIOMACK_CONSUMER_KEY;
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const raw = req.url ?? '/';
   const path = raw.replace(/^\/api\/audiomack/, '') || '/';
-  const upstreamUrl = `${UPSTREAM}${path}`;
+
+  const url = new URL(`${UPSTREAM}${path}`, 'http://localhost');
+  if (CONSUMER_KEY && !url.searchParams.has('consumer_key')) {
+    url.searchParams.set('consumer_key', CONSUMER_KEY);
+  }
+  const upstreamUrl = url.toString();
 
   try {
     const upstreamRes = await fetch(upstreamUrl, {

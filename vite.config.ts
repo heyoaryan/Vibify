@@ -30,6 +30,13 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/lyricsovh/, ''),
         secure: true,
       },
+      // Proxy Audiomack API to avoid CORS blocks in the browser (matches Vercel /api/audiomack)
+      '/api/audiomack': {
+        target: 'https://api.audiomack.com/v1',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/audiomack/, ''),
+        secure: true,
+      },
     },
   },
 });
