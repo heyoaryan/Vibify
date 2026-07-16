@@ -11,10 +11,10 @@ import {
 
 import type { RepeatMode, Song } from './types';
 import { shuffleArray } from './lib';
-import { searchSongs } from './saavn';
 import { canGuestPlaySong, consumeGuestPlayback } from './auth';
 import { getSettings } from './settings';
 import { recordPlay, addListenSeconds, flushListenSeconds } from './history';
+import { getQuickRecommendations } from './recommendations';
 
 // ─── Context is split into two parts ─────────────────────────────────────────
 // 1. PlayerContext  — stable state that changes only on song/control changes
@@ -86,6 +86,60 @@ const audioB = makeAudio();
 let activeAudio: HTMLAudioElement | null = audioA;
 let nextAudio: HTMLAudioElement | null = audioB;
 
+// ─── Web Audio API for enhanced sound quality ─────────────────────────────────
+let audioCtx: AudioContext | null = null;
+let sourceA: MediaElementAudioSourceNode | null = null;
+let sourceB: MediaElementAudioSourceNode | null = null;
+let bassFilter: BiquadFilterNode | null = null;
+let compressor: DynamicsCompressorNode | null = null;
+
+function ensureAudioContext() {
+  if (!audioCtx && typeof AudioContext !== 'undefined') {
+    try {
+      audioCtx = new AudioContext();
+      sourceA = audioCtx.createMediaElementSource(audioA!);
+      sourceB = audioCtx.createMediaElementSource(audioB!);
+      bassFilter = audioCtx.createBiquadFilter();
+      bassFilter.type = 'lowshelf';
+      bassFilter.frequency.value = 200;
+      bassFilter.gain.value = 6;
+
+      compressor = audioCtx.createDynamicsCompressor();
+      compressor.threshold.value = -24;
+      compressor.knee.value = 30;
+      compressor.ratio.value = 12;
+      compressor.attack.value = 0.003;
+      compressor.release.value = 0.25;
+
+      sourceA.connect(bassFilter).connect(compressor).connect(audioCtx.destination);
+      sourceB.connect(bassFilter).connect(compressor).connect(audioCtx.destination);
+    } catch (e) {
+      console.warn('[audio] Web Audio API not available:', e);
+    }
+  }
+  if (audioCtx?.state === 'suspended') {
+    audioCtx.resume();
+  }
+}
+
+function downgradeQuality(src: string): string | null {
+  const mp4 = src.match(/_(\d+)\.mp4$/);
+  if (mp4) {
+    const q = parseInt(mp4[1]);
+    if (q >= 320) return src.replace(/_320\.mp4$/, '_160.mp4');
+    if (q >= 160) return src.replace(/_160\.mp4$/, '_96.mp4');
+    return null;
+  }
+  const mp3 = src.match(/_(\d+)k\.mp3$/);
+  if (mp3) {
+    const q = parseInt(mp3[1]);
+    if (q >= 320) return src.replace(/_320k\.mp3$/, '_160k.mp3');
+    if (q >= 160) return src.replace(/_160k\.mp3$/, '_96k.mp3');
+    return null;
+  }
+  return null;
+}
+
 /**
  * iOS Safari (and some Android WebViews) silently block audio playback until
  * the user has interacted with the page. We unlock the audio element on the
@@ -94,6 +148,7 @@ let nextAudio: HTMLAudioElement | null = audioB;
  */
 function unlockAudioOnFirstGesture() {
   const unlock = () => {
+    ensureAudioContext();
     [audioA, audioB].forEach((el) => {
       if (!el) return;
       el.volume = 0;
@@ -200,6 +255,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const repeatRef = useRef(repeat);
   const volumeRef = useRef(volume);
   const mutedRef = useRef(muted);
+  const playedRef = useRef(false);
+  const retryCountRef = useRef(0);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   currentRef.current = current;
   queueRef.current = queue;
   indexRef.current = index;
@@ -221,6 +279,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // Song id that was loaded by crossfade — so the load-effect skips re-loading it
   const crossfadeLoadedIdRef = useRef<string | null>(null);
 
+  /** Clear pending retry timers and reset retry counter */
+  const clearRetryState = useCallback(() => {
+    if (retryTimerRef.current !== null) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+    retryCountRef.current = 0;
+    playedRef.current = false;
+  }, []);
+
   /** Clear all crossfade timers and ramps */
   const clearCrossfadeState = useCallback(() => {
     if (crossfadeTimerRef.current !== null) {
@@ -234,6 +302,33 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     crossfadeFiredRef.current = false;
     crossfadeInProgressRef.current = false;
     crossfadeLoadedIdRef.current = null;
+    clearRetryState();
+  }, [clearRetryState]);
+
+  const handlePlaybackFailure = useCallback(() => {
+    if (!activeAudio || !currentRef.current) return;
+    const retries = retryCountRef.current;
+    if (retries < 3) {
+      retryCountRef.current = retries + 1;
+      const delay = Math.pow(2, retries) * 1000;
+      retryTimerRef.current = setTimeout(() => {
+        if (!activeAudio) return;
+        playedRef.current = false;
+        activeAudio.load();
+        activeAudio.play().catch(() => {});
+      }, delay);
+    } else {
+      const lowerSrc = downgradeQuality(activeAudio.src);
+      if (lowerSrc) {
+        retryCountRef.current = 0;
+        playedRef.current = false;
+        activeAudio.src = lowerSrc;
+        activeAudio.load();
+        activeAudio.play().catch(() => {});
+      } else {
+        setIsPlaying(false);
+      }
+    }
   }, []);
 
   /**
@@ -241,6 +336,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
    * Does NOT touch audio directly; song-load effect handles that.
    */
   const advanceIndex = useCallback(() => {
+    clearRetryState();
     const q = queueRef.current;
     const idx = indexRef.current;
     const rep = repeatRef.current;
@@ -262,7 +358,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setIsPlaying(false);
       setPosition(0);
     }
-  }, [clearCrossfadeState]);
+  }, [clearCrossfadeState, clearRetryState]);
 
   // ─── Crossfade trigger — runs inside the rAF tick, zero React re-renders ──
   // By moving this into the rAF loop we avoid the expensive useEffect that
@@ -376,6 +472,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
     const onPlay = () => {
       setIsPlaying(true);
+      clearRetryState();
       startTick();
     };
 
@@ -398,7 +495,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const onError = () => {
       if (!activeAudio) return;
       console.error('Audio error:', activeAudio.error?.message, activeAudio.src);
-      setIsPlaying(false);
+      handlePlaybackFailure();
     };
 
     activeAudio.addEventListener('play', onPlay);
@@ -450,6 +547,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // Named handlers so we can add/remove them in rewireListeners
   function handlePlay() {
     setIsPlaying(true);
+    clearRetryState();
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     let lastT = -1;
     const tick = () => {
@@ -481,7 +579,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   function handleError() {
     if (!activeAudio) return;
     console.error('Audio error:', activeAudio.error?.message, activeAudio.src);
-    setIsPlaying(false);
+    handlePlaybackFailure();
   }
 
   /**
@@ -504,8 +602,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
     console.debug('[player] loading:', current.title, '| src:', current.src.slice(0, 80));
 
-    // Cancel any ongoing crossfade
+    // Cancel any ongoing crossfade or retry
     clearCrossfadeState();
+    clearRetryState();
 
     // Stop next audio if it was pre-loading something
     if (nextAudio) {
@@ -533,14 +632,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       activeAudio.play().catch((err: DOMException) => {
         if (err.name === 'AbortError') return;
         console.error('[player] play() failed:', err.name, err.message);
-        setIsPlaying(false);
+        handlePlaybackFailure();
       });
     };
 
-    let played = false;
     const onCanPlay = () => {
-      if (played) return;
-      played = true;
+      if (playedRef.current) return;
+      playedRef.current = true;
       activeAudio?.removeEventListener('canplay', onCanPlay);
       doPlay();
     };
@@ -551,6 +649,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
     return () => {
       activeAudio?.removeEventListener('canplay', onCanPlay);
+      playedRef.current = false;
+      clearRetryState();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.id]);
@@ -690,6 +790,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       if (!activeAudio.src || activeAudio.src === window.location.href) {
         const song = currentRef.current;
         if (song?.src) {
+          clearRetryState();
+          playedRef.current = false;
           activeAudio.src = song.src;
           activeAudio.load();
         }
@@ -697,12 +799,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       activeAudio.play().catch((err: DOMException) => {
         if (err.name === 'AbortError') return;
         console.error('[player] togglePlay play() failed:', err.name, err.message);
-        setIsPlaying(false);
+        handlePlaybackFailure();
       });
     } else {
       activeAudio.pause();
     }
-  }, []);
+  }, [handlePlaybackFailure, clearRetryState]);
 
   const next = useCallback(() => {
     const q = queueRef.current;
@@ -713,31 +815,35 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const nextIdx = idx < q.length - 1 ? idx + 1 : rep === 'all' ? 0 : idx;
     if (nextIdx === idx) return;
 
+    clearRetryState();
     clearCrossfadeState();
     setIndex(nextIdx);
     setIsPlaying(true);
-  }, [clearCrossfadeState]);
+  }, [clearCrossfadeState, clearRetryState]);
 
   const prev = useCallback(() => {
     if (activeAudio && activeAudio.currentTime > 3) {
       activeAudio.currentTime = 0;
       setPosition(0);
+      clearRetryState();
       return;
     }
     const idx = indexRef.current;
     const prevIdx = idx > 0 ? idx - 1 : 0;
+    clearRetryState();
     clearCrossfadeState();
     setIndex(prevIdx);
     setIsPlaying(true);
-  }, [clearCrossfadeState]);
+  }, [clearCrossfadeState, clearRetryState]);
 
   const seek = useCallback((seconds: number) => {
     if (!activeAudio) return;
     activeAudio.currentTime = seconds;
     setPosition(seconds);
+    clearRetryState();
     // After seek, reset crossfade state so it can re-arm at the new position
     clearCrossfadeState();
-  }, [clearCrossfadeState]);
+  }, [clearCrossfadeState, clearRetryState]);
 
   const setVolume = useCallback((v: number) => {
     setVolumeState(v);
@@ -773,10 +879,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const jumpToQueueItem = useCallback((songId: string) => {
     const idx = queueRef.current.findIndex((s) => s.id === songId);
     if (idx < 0) return;
+    clearRetryState();
     clearCrossfadeState();
     setIndex(idx);
     setIsPlaying(true);
-  }, [clearCrossfadeState]);
+  }, [clearCrossfadeState, clearRetryState]);
 
   /* ---------------- auto-queue refill ---------------- */
 
@@ -792,7 +899,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     isFetchingMoreRef.current = true;
     const existingIds = new Set(queue.map((s) => s.id));
 
-    searchSongs(current.artist, 15)
+    getQuickRecommendations(current.artist, 10)
       .then((results) => {
         const fresh = results.filter((s) => !existingIds.has(s.id)).slice(0, 10);
         if (!fresh.length) return;

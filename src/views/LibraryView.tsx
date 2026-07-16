@@ -6,7 +6,7 @@ import { Artwork } from '../components/Artwork';
 import { formatTime } from '../lib';
 
 export const LibraryView = memo(function LibraryView() {
-  const { likedSongs, isLiked, toggle: toggleLike } = useLikes();
+  const { likedSongs, toggle: toggleLike } = useLikes();
   const { playSongs, current, isPlaying, togglePlay, jumpToQueueItem, queue } = usePlayer();
 
   const isLikedQueueActive =

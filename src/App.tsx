@@ -16,14 +16,15 @@ import { supabase } from './supabase';
 // Each view is only downloaded when first navigated to, keeping the initial
 // JS bundle small and first-paint fast.
 const HomeView       = lazy(() => import('./views/HomeView').then(m => ({ default: m.HomeView })));
-const SearchView     = lazy(() => import('./views/SearchView').then(m => ({ default: m.SearchView })));
-const LibraryView    = lazy(() => import('./views/LibraryView').then(m => ({ default: m.LibraryView })));
-const PlaylistView   = lazy(() => import('./views/PlaylistView').then(m => ({ default: m.PlaylistView })));
-const NowPlayingView = lazy(() => import('./views/NowPlayingView').then(m => ({ default: m.NowPlayingView })));
-const AccountView    = lazy(() => import('./views/AccountView').then(m => ({ default: m.AccountView })));
-const SettingsView   = lazy(() => import('./views/SettingsView').then(m => ({ default: m.SettingsView })));
-const PremiumView    = lazy(() => import('./views/PremiumView').then(m => ({ default: m.PremiumView })));
-const LoginView      = lazy(() => import('./views/LoginView').then(m => ({ default: m.LoginView })));
+  const SearchView     = lazy(() => import('./views/SearchView').then(m => ({ default: m.SearchView })));
+  const LibraryView    = lazy(() => import('./views/LibraryView').then(m => ({ default: m.LibraryView })));
+  const PlaylistView   = lazy(() => import('./views/PlaylistView').then(m => ({ default: m.PlaylistView })));
+  const RoomView       = lazy(() => import('./views/RoomView').then(m => ({ default: m.RoomView })));
+  const NowPlayingView = lazy(() => import('./views/NowPlayingView').then(m => ({ default: m.NowPlayingView })));
+  const AccountView    = lazy(() => import('./views/AccountView').then(m => ({ default: m.AccountView })));
+  const SettingsView   = lazy(() => import('./views/SettingsView').then(m => ({ default: m.SettingsView })));
+  const PremiumView    = lazy(() => import('./views/PremiumView').then(m => ({ default: m.PremiumView })));
+  const LoginView      = lazy(() => import('./views/LoginView').then(m => ({ default: m.LoginView })));
 
 // Minimal inline fallback — just a dark screen, no spinner flash for fast loads
 function ViewFallback() {
@@ -54,7 +55,8 @@ function ViewRouter({ onNavigate }: { onNavigate: () => void }) {
       case 'home':     return <HomeView />;
       case 'search':   return <SearchView />;
       case 'library':  return <LibraryView />;
-      case 'playlist': return <PlaylistView id={view.id} />;
+case 'playlist': return <PlaylistView id={view.id} />;
+      case 'room':     return <RoomView />;
       case 'account':  return <AccountView />;
       case 'settings': return <SettingsView />;
       case 'premium':  return <PremiumView />;
@@ -106,7 +108,7 @@ function Shell() {
         >
           <div className="pointer-events-none sticky top-0 z-10 h-24 bg-gradient-to-b
             from-ink-800/30 to-transparent sm:h-28 lg:h-32" />
-          <div className="relative -mt-24 sm:-mt-28 lg:-mt-32">
+          <div className="relative -mt-24 sm:-mt-28 lg:-mt-32 flex flex-col min-h-0">
             <TopBar />
             <ViewRouter onNavigate={scrollToTop} />
           </div>

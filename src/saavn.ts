@@ -9,6 +9,7 @@
 
 import type { Song } from './types';
 import { getSettings } from './settings';
+import { searchAudiomack, getTrendingAudiomack } from './audios';
 
 // In dev, Vite proxies /jiosaavn/* → https://www.jiosaavn.com/*
 // In production, Vercel rewrites /jiosaavn/api.php → /api/jiosaavn (serverless proxy)
@@ -215,8 +216,8 @@ function decodeHtml(raw: string): string {
 
 function cleanTitle(raw: string): string {
   let t = decodeHtml(raw);
-  t = t.replace(/\s*[\[(]From\s+["']?[^)\]]*["']?[\])]/gi, '');
-  t = t.replace(/\s*[\[(](Remix|Remastered|Official|Lyrical?|Audio|Video|Full Song|HD|4K|feat\.?|ft\.?)[^\])]*[\])]/gi, '');
+  t = t.replace(/\s*[\[(]From\s+[^)\]]*[)\]]/gi, '');
+  t = t.replace(/\s*[\[(](?:Remix|Remastered|Official|Lyrical?|Audio|Video|Full Song|HD|4K|feat\.?|ft\.?)[^\])]*[)\]]/gi, '');
   return t.replace(/\s{2,}/g, ' ').trim();
 }
 
@@ -235,9 +236,11 @@ function mapSong(raw: JioDetailSong): Song | null {
   try {
     const base = decryptUrl(encUrl);
     if (!base) return null;
-    // Use quality from global settings; dataSaver caps at 96kbps
     const { audioQuality, dataSaver } = getSettings();
-    const quality = dataSaver ? '96' : audioQuality;
+    type ConnectionInfo = { effectiveType?: string; saveData?: boolean };
+    const conn = (navigator as unknown as { connection?: ConnectionInfo }).connection;
+    const slowNetwork = conn?.effectiveType === 'slow-2g' || conn?.effectiveType === '2g' || conn?.saveData;
+    const quality = dataSaver || slowNetwork ? '96' : audioQuality;
     audioUrl = qualityUrl(base, quality);
   } catch {
     return null;
@@ -361,6 +364,11 @@ async function getArtistTopSongs(artistQuery: string, limit: number): Promise<So
 /**
  * Search songs by query.
  *
+ * Flow:
+ *  1. Try JioSaavn first
+ *  2. If < 3 results, fallback to Audiomack
+ *  3. Merge, deduplicate, and return
+ *
  * Artist detection: if the query looks like a known artist (no song-like words
  * such as "from", "lyrics", brackets, or common song keywords), we first try
  * the artist search path which returns only that artist's songs. Falls back to
@@ -371,7 +379,7 @@ export async function searchSongs(query: string, limit = 20): Promise<Song[]> {
   try {
     // Heuristic: query is likely an artist name if it has no song-specific markers
     const q = query.trim();
-    const songKeywords = /from|lyrics|song|audio|video|full|official|remix|feat|ft\.|[\[(]/i;
+    const songKeywords = /from|lyrics|song|audio|video|full|official|remix|feat|ft\.|[([]/i;
     const looksLikeArtist = !songKeywords.test(q) && q.split(/\s+/).length <= 4;
 
     if (looksLikeArtist) {
@@ -390,10 +398,22 @@ export async function searchSongs(query: string, limit = 20): Promise<Song[]> {
 
     const searchJson: JioSearchResponse = await searchRes.json();
     const results = searchJson?.results;
-    if (!results?.length) return [];
+    let songs: Song[] = [];
 
-    // Step 2 — batch fetch full details
-    const songs = await fetchSongDetails(results.map(r => r.id));
+    if (results?.length) {
+      // Step 2 — batch fetch full details
+      songs = await fetchSongDetails(results.map(r => r.id));
+    }
+
+    // Step 3 — fallback to Audiomack if Saavn returned few/no results
+    if (songs.length < 3) {
+      const audioResults = await searchAudiomack(q, limit);
+      if (audioResults.length > 0) {
+        const saavnIds = new Set(songs.map(s => s.id));
+        const merged = [...songs, ...audioResults.filter(s => !saavnIds.has(s.id))];
+        songs = merged;
+      }
+    }
 
     // If query looks like an artist, sort: artist's songs first
     if (looksLikeArtist) {
@@ -408,27 +428,42 @@ export async function searchSongs(query: string, limit = 20): Promise<Song[]> {
     return dedupSongs(songs);
   } catch (error) {
     console.error('searchSongs error:', error);
-    return [];
+    // Final fallback: try Audiomack directly
+    try {
+      const audioResults = await searchAudiomack(query, limit);
+      return dedupSongs(audioResults);
+    } catch {
+      return [];
+    }
   }
 }
 
-/** Trending songs */
+/** Trending songs — tries Saavn first, falls back to Audiomack */
 export async function getTrendingSongs(limit = 20): Promise<Song[]> {
-  return searchSongs('trending hindi 2025', limit);
+  const saavn = await searchSongs('trending hindi 2025', limit);
+  if (saavn.length >= 3) return saavn;
+  const audio = await getTrendingAudiomack(limit);
+  return saavn.length > 0 ? saavn : audio;
 }
 
-/** New releases */
+/** New releases — tries Saavn first, falls back to Audiomack */
 export async function getNewReleases(limit = 20): Promise<Song[]> {
-  return searchSongs('new hindi songs 2025', limit);
+  const saavn = await searchSongs('new hindi songs 2025', limit);
+  if (saavn.length >= 3) return saavn;
+  const audio = await searchAudiomack('new releases 2025', limit);
+  return saavn.length > 0 ? saavn : audio;
 }
 
-/** Top songs by artist — uses artist search path for accurate results */
+/** Top songs by artist — uses artist search path for accurate results, falls back to Audiomack */
 export async function getArtistSongs(artistName: string, limit = 10): Promise<Song[]> {
   // Try dedicated artist path first
   const artistSongs = await getArtistTopSongs(artistName, limit);
   if (artistSongs && artistSongs.length > 0) return dedupSongs(artistSongs);
-  // Fallback to generic search
-  return searchSongs(artistName, limit);
+  // Fallback to generic search + Audiomack
+  const saavn = await searchSongs(artistName, limit);
+  if (saavn.length >= 3) return dedupSongs(saavn);
+  const audio = await searchAudiomack(artistName, limit);
+  return dedupSongs([...saavn, ...audio]);
 }
 
 /** Get a single song's details by JioSaavn song ID */

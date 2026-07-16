@@ -1,4 +1,4 @@
-import { Home, Library, Search, Settings } from 'lucide-react';
+import { Home, Library, Search, Settings, Users } from 'lucide-react';
 import { useCurrentUser } from '../auth';
 import { UserAvatar } from './UserAvatar';
 import { VibifyLogo } from './VibifyLogo';
@@ -22,7 +22,7 @@ export function IconRail({
   const user = useCurrentUser();
 
   const activeSection: NavSection =
-    view.name === 'home' || view.name === 'search' || view.name === 'library'
+    view.name === 'home' || view.name === 'search' || view.name === 'library' || view.name === 'room'
       ? view.name
       : view.name === 'playlist'
         ? 'library'
@@ -73,7 +73,25 @@ export function IconRail({
 
 
 
-      {/* Bottom: Account first, then Settings below */}
+      {/* Room — directly below Library in primary nav */}
+        <button
+          onClick={() => { navigate({ name: 'room' }); onClose?.(); }}
+          aria-label="Room"
+          title="Listening Room"
+          className={`group relative flex items-center gap-4 rounded-xl py-3 font-semibold transition-all duration-200 ${
+            view.name === 'room'
+              ? 'bg-brand-500/15 text-brand-300'
+              : 'text-ink-300 hover:bg-ink-800/50 hover:text-ink-50'
+          } ${expanded ? 'px-3' : 'justify-center'}`}
+        >
+          {view.name === 'room' && (
+            <span className="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-full bg-brand-400" />
+          )}
+          <Users size={22} strokeWidth={view.name === 'room' ? 2.4 : 2} />
+          {expanded && <span className="text-sm">Room</span>}
+        </button>
+
+       {/* Bottom: Account first, then Settings below */}
       <div className="mt-auto flex flex-col gap-2">
         {/* Account */}
         <button

@@ -39,9 +39,10 @@ export type View =
   | { name: 'search' }
   | { name: 'library' }
   | { name: 'playlist'; id: string }
+  | { name: 'room' }
   | { name: 'nowplaying' }
   | { name: 'account' }
   | { name: 'settings' }
   | { name: 'premium' };
 
-export type NavSection = 'home' | 'search' | 'library';
+export type NavSection = 'home' | 'search' | 'library' | 'room';

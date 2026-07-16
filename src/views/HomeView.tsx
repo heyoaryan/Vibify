@@ -1,4 +1,4 @@
-import { Clock, Flame, Play, Sparkles } from 'lucide-react';
+import { Clock, Flame, Play, Sparkles, Wand2 } from 'lucide-react';
 import { memo, useEffect, useState } from 'react';
 import { useRecentlyPlayed } from '../history';
 
@@ -7,6 +7,7 @@ import type { Song } from '../types';
 import { Artwork } from '../components/Artwork';
 import { SongRowCard } from '../components/Cards';
 import { getTrendingSongs, getNewReleases, getArtistSongs, searchSongs, getSongDetails } from '../saavn';
+import { getRecommendations } from '../recommendations';
 
 function greeting(): string {
   const h = new Date().getHours();
@@ -63,6 +64,7 @@ type HomeCache = {
   releases:   Song[];
   madeForYou: Song[];
   spotlight:  Song | null;
+  forYou:     Song[];
 };
 let _homeCache: HomeCache | null = null;
 
@@ -75,6 +77,7 @@ export const HomeView = memo(function HomeView() {
   const [releases, setReleases]       = useState<Song[]>(_homeCache?.releases ?? []);
   const [madeForYou, setMadeForYou]   = useState<Song[]>(_homeCache?.madeForYou ?? []);
   const [spotlight, setSpotlight]     = useState<Song | null>(_homeCache?.spotlight ?? null);
+  const [forYou, setForYou]           = useState<Song[]>(_homeCache?.forYou ?? []);
   const [loading, setLoading]         = useState(_homeCache === null);
 
   useEffect(() => {
@@ -87,7 +90,8 @@ export const HomeView = memo(function HomeView() {
       delay(250).then(() => getNewReleases(20)),
       delay(500).then(() => getArtistSongs('arijit singh', 8)),
       delay(750).then(() => searchSongs('chill hindi 2025', 10)),
-    ]).then(([trendingRaw, releasesRaw, arijitRaw, chillRaw]) => {
+      delay(900).then(() => getRecommendations(12)),
+    ]).then(([trendingRaw, releasesRaw, arijitRaw, chillRaw, forYouRaw]) => {
       const used = new Set<string>();
 
       const picks = dedupe(trendingRaw).slice(0, 6);
@@ -104,14 +108,17 @@ export const HomeView = memo(function HomeView() {
 
       const spot = arijitRaw.find(s => !used.has(s.id)) ?? arijitRaw[0] ?? trendingRaw[0] ?? null;
 
+      const forYouF = dedupe(forYouRaw).slice(0, 12);
+
       // Persist results in module cache
-      _homeCache = { quickPicks: picks, trending: trendingF, releases: releasesF, madeForYou: mfy, spotlight: spot };
+      _homeCache = { quickPicks: picks, trending: trendingF, releases: releasesF, madeForYou: mfy, spotlight: spot, forYou: forYouF };
 
       setQuickPicks(picks);
       setTrending(trendingF);
       setReleases(releasesF);
       setMadeForYou(mfy);
       setSpotlight(spot);
+      setForYou(forYouF);
       setLoading(false);
     }).catch((err) => {
       console.error('HomeView fetch error:', err);
@@ -134,13 +141,10 @@ export const HomeView = memo(function HomeView() {
     imageUrl: it.imageUrl,
   }));
 
-  const [fetchingId, setFetchingId] = useState<string | null>(null);
-
   const play = (s: Song, list: Song[]) => {
     if (current?.id === s.id) { togglePlay(); return; }
     // Songs from recently-played history have no src — fetch fresh details first
     if (!s.src) {
-      setFetchingId(s.id);
       getSongDetails(s.id)
         .then(fresh => {
           if (fresh?.src) {
@@ -153,7 +157,7 @@ export const HomeView = memo(function HomeView() {
             });
           }
         })
-        .finally(() => setFetchingId(null));
+        .catch(() => {});
       return;
     }
     playSongs(list, s.id);
@@ -322,6 +326,24 @@ export const HomeView = memo(function HomeView() {
           </div>
         )}
       </section>
+
+      {/* ── For You — personalized recommendations ── */}
+      {!loading && forYou.length > 0 && (
+        <section>
+          <div className="mb-3 flex items-center gap-2 sm:mb-4">
+            <Wand2 size={16} className="text-brand-400" />
+            <h2 className="font-display text-lg font-bold text-ink-50 sm:text-xl">For you</h2>
+          </div>
+          <div className="no-scrollbar snap-rail flex gap-2.5 overflow-x-auto pb-2 sm:gap-3">
+            {forYou.map(s => (
+              <div key={s.id} className="snap-card w-64 shrink-0 sm:w-72 lg:w-80">
+                <SongRowCard song={s} onPlay={() => play(s, forYou)}
+                  isCurrent={current?.id === s.id} isPlaying={isPlaying && current?.id === s.id} />
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* ── Trending now ── */}
       <section>

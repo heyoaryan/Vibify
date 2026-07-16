@@ -171,6 +171,12 @@ export const SettingsView = memo(function SettingsView() {
             />
           }
         />
+        <SettingRow
+          icon={Zap} hue={280}
+          label="Sound enhancement"
+          description="Bass boost and audio compression for richer sound"
+          right={<Toggle enabled={settings.audioEnhancement} onChange={v => update({ audioEnhancement: v })} />}
+        />
       </SectionCard>
 
       {/* ── Appearance ── */}

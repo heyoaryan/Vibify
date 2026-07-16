@@ -1,12 +1,10 @@
 import { ArrowLeft } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useNav } from '../nav';
-import { useCurrentUser } from '../auth';
 import { UserAvatar } from './UserAvatar';
 
 export function TopBar() {
   const { canGoBack, back, view, navigate } = useNav();
-  const user = useCurrentUser();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -14,8 +12,9 @@ export function TopBar() {
     view.name === 'home'     ? 'Home'
     : view.name === 'search'   ? 'Search'
     : view.name === 'library'  ? 'Library'
-    : view.name === 'playlist' ? 'Playlist'
-    : view.name === 'account'  ? 'Account'
+: view.name === 'playlist' ? 'Playlist'
+     : view.name === 'room'     ? 'Listening Room'
+     : view.name === 'account'  ? 'Account'
     : view.name === 'settings' ? 'Settings'
     : 'Now Playing';
 
@@ -57,16 +56,6 @@ export function TopBar() {
       </h1>
 
       <div className="flex-1" />
-
-      {/* Desktop search shortcut */}
-      <button
-        onClick={() => navigate({ name: 'search' })}
-        className="hidden lg:flex items-center gap-2 rounded-full bg-ink-800/60
-          px-4 py-2 text-sm text-ink-300 transition-colors
-          hover:bg-ink-700 hover:text-ink-100"
-      >
-        Search music
-      </button>
 
       {/* Mobile / tablet: account avatar → dropdown */}
       <div ref={dropdownRef} className="relative lg:hidden">

@@ -18,6 +18,8 @@ export type AppSettings = {
   dataSaver: boolean;
   /** Push notifications (browser Notification API) */
   notifications: boolean;
+  /** Bass boost + audio compression via Web Audio API */
+  audioEnhancement: boolean;
 };
 
 const STORAGE_KEY = 'vibify_settings_v1';
@@ -28,6 +30,7 @@ const DEFAULTS: AppSettings = {
   crossfadeSecs: 0,
   dataSaver: false,
   notifications: false,
+  audioEnhancement: true,
 };
 
 function load(): AppSettings {

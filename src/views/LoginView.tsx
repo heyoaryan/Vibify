@@ -20,11 +20,6 @@ function GoogleIcon() {
   );
 }
 
-// ─── Vibify logo mark — now uses the real logo image ─────────────────────────
-function VibifyMark({ size = 28 }: { size?: number }) {
-  return <VibifyLogo size={size} />;
-}
-
 // ─── Inline error message ─────────────────────────────────────────────────────
 
 function FieldError({ msg }: { msg: string }) {
