@@ -9,7 +9,7 @@
 
 import type { Song } from './types';
 import { getSettings } from './settings';
-import { searchAudiomack, getTrendingAudiomack } from './audios';
+import { searchAudiomack, getTrendingAudiomack, getAudiomackTrackUrl, isAudiomackId } from './audios';
 
 // In dev, Vite proxies /jiosaavn/* → https://www.jiosaavn.com/*
 // In production, Vercel rewrites /jiosaavn/api.php → /api/jiosaavn (serverless proxy)
@@ -260,6 +260,7 @@ function mapSong(raw: JioDetailSong): Song | null {
     src: audioUrl,
     genre: raw.language === 'hindi' ? 'Hindi' : raw.language === 'english' ? 'English' : 'Other',
     imageUrl: highResImage(raw.image),
+    provider: 'saavn' as const,
   };
 }
 
@@ -479,4 +480,20 @@ export async function getSongDetails(songId: string): Promise<Song | null> {
   } catch {
     return null;
   }
+}
+
+/** Refresh streaming URLs for Audiomack songs that have empty or likely-expired src */
+export async function refreshAudiomackUrls(songs: Song[]): Promise<Song[]> {
+  const amSongs = songs.filter(s => isAudiomackId(s.id) && (!s.src || s.src.length === 0));
+  if (!amSongs.length) return songs;
+
+  const refreshed = await Promise.all(
+    amSongs.map(async (song) => {
+      const freshUrl = await getAudiomackTrackUrl(song.id);
+      return freshUrl ? { ...song, src: freshUrl } : song;
+    })
+  );
+
+  const refreshedIds = new Set(refreshed.map(s => s.id));
+  return [...refreshed, ...songs.filter(s => !refreshedIds.has(s.id))];
 }

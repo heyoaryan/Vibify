@@ -15,6 +15,7 @@ import { canGuestPlaySong, consumeGuestPlayback } from './auth';
 import { getSettings } from './settings';
 import { recordPlay, addListenSeconds, flushListenSeconds } from './history';
 import { getQuickRecommendations } from './recommendations';
+import { getAudiomackTrackUrl, isAudiomackId } from './audios';
 
 // ─── Context is split into two parts ─────────────────────────────────────────
 // 1. PlayerContext  — stable state that changes only on song/control changes
@@ -305,9 +306,30 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     clearRetryState();
   }, [clearRetryState]);
 
-  const handlePlaybackFailure = useCallback(() => {
+  const handlePlaybackFailure = useCallback(async () => {
     if (!activeAudio || !currentRef.current) return;
+    const song = currentRef.current;
     const retries = retryCountRef.current;
+
+    // For Audiomack tracks, try refreshing the expired streaming URL first
+    if (isAudiomackId(song.id)) {
+      try {
+        const freshUrl = await getAudiomackTrackUrl(song.id);
+        if (freshUrl) {
+          retryCountRef.current = 0;
+          playedRef.current = false;
+          activeAudio.src = freshUrl;
+          activeAudio.load();
+          activeAudio.play().catch(() => {});
+          setQueue(q => q.map(s => s.id === song.id ? { ...s, src: freshUrl } : s));
+          sourceQueueRef.current = sourceQueueRef.current.map(s => s.id === song.id ? { ...s, src: freshUrl } : s);
+          return;
+        }
+      } catch {
+        // fall through to normal retry logic
+      }
+    }
+
     if (retries < 3) {
       retryCountRef.current = retries + 1;
       const delay = Math.pow(2, retries) * 1000;

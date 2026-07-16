@@ -1,17 +1,12 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 const UPSTREAM = 'https://api.audiomack.com/v1';
-const CONSUMER_KEY = process.env.AUDIOMACK_CONSUMER_KEY;
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const raw = req.url ?? '/';
   const path = raw.replace(/^\/api\/audiomack/, '') || '/';
 
-  const url = new URL(`${UPSTREAM}${path}`, 'http://localhost');
-  if (CONSUMER_KEY && !url.searchParams.has('consumer_key')) {
-    url.searchParams.set('consumer_key', CONSUMER_KEY);
-  }
-  const upstreamUrl = url.toString();
+  const upstreamUrl = `${UPSTREAM}${path}`;
 
   try {
     const upstreamRes = await fetch(upstreamUrl, {
@@ -21,10 +16,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       },
     });
 
+    const contentType = upstreamRes.headers.get('content-type') ?? 'application/json';
     const body = await upstreamRes.text();
 
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Content-Type', upstreamRes.headers.get('content-type') ?? 'application/json');
+    res.setHeader('Content-Type', contentType);
     res.status(upstreamRes.status).send(body);
   } catch (err) {
     console.error('[audiomack proxy]', err);
