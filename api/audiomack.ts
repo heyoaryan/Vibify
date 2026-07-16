@@ -4,17 +4,14 @@ const UPSTREAM = 'https://api.audiomack.com/v1';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
-    let path = '/';
+    // ── 1. Extract path ──────────────────────────────────────────────────────
+    // In Vercel rewrites, req.url preserves the ORIGINAL source URL.
+    // Strip our prefix to get the Audiomack API path.
+    const rawUrl = req.url || '/';
+    const [urlPath] = rawUrl.split('?');
+    const path = urlPath.replace(/^\/api\/audiomack/, '') || '/';
 
-    // Vercel :path* wildcard captures the original path after /api/audiomack
-    const rawParams = req.params?.path;
-    if (typeof rawParams === 'string') {
-      path = '/' + rawParams;
-    } else if (Array.isArray(rawParams) && rawParams.length > 0) {
-      path = '/' + rawParams[0];
-    }
-
-    // Reconstruct query string from Vercel-parsed req.query
+    // ── 2. Reconstruct query string from Vercel-parsed req.query ─────────────
     const qs = new URLSearchParams();
     for (const [key, value] of Object.entries(req.query)) {
       if (value === undefined || value === null) continue;
@@ -30,13 +27,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     console.log('[audiomack]', JSON.stringify({
       method: req.method,
-      reqUrl: req.url,
-      params: JSON.stringify(req.params),
-      query: JSON.stringify(req.query),
+      rawUrl,
       path,
+      queryString,
       upstreamUrl,
     }));
 
+    // ── 3. Forward request ───────────────────────────────────────────────────
     const upstreamRes = await fetch(upstreamUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
