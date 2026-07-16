@@ -2,28 +2,40 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 const UPSTREAM = 'https://api.audiomack.com/v1';
 
-function getClientIp(req: VercelRequest): string {
-  return (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
-    || (req.headers['x-real-ip'] as string)
-    || 'unknown';
-}
-
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     let path = '/';
-    
-    // Vercel's req.url is the DESTINATION path (/api/audiomack), not the source.
-    // The original path is captured in req.params.path from the :path* wildcard.
-    const paramsPath = (req as { params?: { path?: string } }).params?.path;
-    if (paramsPath) {
-      path = '/' + paramsPath;
+
+    // Vercel :path* wildcard captures the original path after /api/audiomack
+    const rawParams = req.params?.path;
+    if (typeof rawParams === 'string') {
+      path = '/' + rawParams;
+    } else if (Array.isArray(rawParams) && rawParams.length > 0) {
+      path = '/' + rawParams[0];
     }
 
-    // Reconstruct query string from req.query (Vercel parses it for us)
-    const qs = new URLSearchParams(req.query as Record<string, string>).toString();
-    const upstreamUrl = `${UPSTREAM}${path}${qs ? '?' + qs : ''}`;
-    
-    console.log(`[audiomack] ${req.method} ${path} → ${upstreamUrl} (ip: ${getClientIp(req)})`);
+    // Reconstruct query string from Vercel-parsed req.query
+    const qs = new URLSearchParams();
+    for (const [key, value] of Object.entries(req.query)) {
+      if (value === undefined || value === null) continue;
+      if (Array.isArray(value)) {
+        for (const v of value) qs.append(key, String(v));
+      } else {
+        qs.append(key, String(value));
+      }
+    }
+    const queryString = qs.toString();
+
+    const upstreamUrl = `${UPSTREAM}${path}${queryString ? '?' + queryString : ''}`;
+
+    console.log('[audiomack]', JSON.stringify({
+      method: req.method,
+      reqUrl: req.url,
+      params: JSON.stringify(req.params),
+      query: JSON.stringify(req.query),
+      path,
+      upstreamUrl,
+    }));
 
     const upstreamRes = await fetch(upstreamUrl, {
       headers: {
@@ -38,7 +50,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const contentType = upstreamRes.headers.get('content-type') ?? 'application/json';
     const body = await upstreamRes.text();
 
-    console.log(`[audiomack] ${upstreamRes.status} ${contentType} (${body.length} bytes)`);
+    console.log(`[audiomack] response: ${upstreamRes.status} ${contentType} (${body.length} bytes)`);
 
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Content-Type', contentType);
