@@ -144,10 +144,16 @@ export function PWAInstallProvider({ children }: { children: ReactNode }) {
   }, [animateProgress]);
 
   const openApp = useCallback(() => {
+    // Hand off to the service worker, which focuses the already-open standalone
+    // PWA window or launches the installed app via the OS (not a plain tab).
     if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
       navigator.serviceWorker.controller.postMessage({ type: 'OPEN_APP' });
+    } else if ('serviceWorker' in navigator) {
+      // Fallback: SW registered but not yet controlling this page.
+      navigator.serviceWorker.ready.then((reg) => {
+        if (reg.active) reg.active.postMessage({ type: 'OPEN_APP' });
+      });
     }
-    window.open('/?source=pwa', '_blank');
     setState('hidden');
   }, []);
 

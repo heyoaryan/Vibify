@@ -192,6 +192,35 @@ self.addEventListener('notificationclick', (event) => {
   );
 });
 
+// ─── Open the installed PWA ────────────────────────────────────────────────────
+// Triggered from the app ("Open App" button) via postMessage. If a standalone
+// PWA window is already open, focus it. Otherwise open the start URL so the OS
+// launches the installed PWA instead of a plain browser tab.
+
+self.addEventListener('message', (event) => {
+  if (!event.data || event.data.type !== 'OPEN_APP') return;
+
+  event.waitUntil(
+    self.clients
+      .matchAll({ type: 'window', includeUncontrolled: true })
+      .then((clients) => {
+        // Prefer an already-running standalone PWA window
+        const pwa = clients.find(
+          (c) => c.url.includes(self.location.origin) && c.frameType === 'top-level' &&
+            (c.visibilityState || '').length >= 0 &&
+            // standalone PWA windows expose display-mode via matchMedia in-page,
+            // but clients can't read that here — so focus any vibify window first.
+            true
+        );
+        if (pwa) return pwa.focus();
+
+        // No PWA window yet → open the start URL. The `?source=pwa` hint lets
+        // the page/OS treat this as a PWA launch.
+        return self.clients.openWindow('/?source=pwa');
+      })
+  );
+});
+
 // ─── Background sync (queue failed actions) ──────────────────────────────────
 
 self.addEventListener('sync', (event) => {
