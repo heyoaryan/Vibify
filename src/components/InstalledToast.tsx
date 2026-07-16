@@ -3,12 +3,12 @@
  * once the PWA install completes. Works across all screen sizes.
  */
 
-import { CheckCircle, ExternalLink } from 'lucide-react';
+import { CheckCircle } from 'lucide-react';
 import { VibifyLogo } from './VibifyLogo';
 import { usePWAInstall } from '../pwaInstall';
 
 export function InstalledToast() {
-  const { state, openApp } = usePWAInstall();
+  const { state } = usePWAInstall();
 
   if (state !== 'installed') return null;
 
@@ -28,13 +28,10 @@ export function InstalledToast() {
         </div>
         <p className="text-base font-semibold text-brand-300">App Installed!</p>
         <p className="mt-0.5 text-xs text-ink-400">Vibify is on your home screen</p>
-        <button
-          onClick={openApp}
-          className="mx-auto mt-5 flex items-center justify-center gap-1.5 rounded-full bg-brand-500 px-5 py-2.5 text-sm font-semibold text-ink-950 transition hover:bg-brand-400 active:scale-95"
-        >
-          <ExternalLink size={13} aria-hidden="true" />
+        {/* Non-clickable label — the PWA opens automatically via the SW */}
+        <span className="mx-auto mt-5 flex w-fit items-center justify-center gap-1.5 rounded-full bg-brand-500/15 px-5 py-2.5 text-sm font-semibold text-brand-300">
           Open App
-        </button>
+        </span>
       </div>
     </div>
   );

@@ -16,7 +16,7 @@ import { CheckCircle, Download, Loader2 } from 'lucide-react';
 import { usePWAInstall } from '../pwaInstall';
 
 export function InstallButton({ className = '' }: { className?: string }) {
-  const { canShowInline, state, install, openApp } = usePWAInstall();
+  const { canShowInline, state, install } = usePWAInstall();
 
   if (!canShowInline) return null;
 
@@ -34,14 +34,12 @@ export function InstallButton({ className = '' }: { className?: string }) {
 
   if (state === 'installed') {
     return (
-      <button
-        onClick={openApp}
-        aria-label="Open installed app"
-        className={`flex items-center justify-center gap-1.5 rounded-xl bg-brand-500/15 px-3 py-2.5 text-sm font-semibold text-brand-300 transition hover:bg-brand-500/25 active:scale-95 ${className}`}
+      <span
+        className={`flex items-center justify-center gap-1.5 rounded-xl bg-brand-500/15 px-3 py-2.5 text-sm font-semibold text-brand-300 ${className}`}
       >
         <CheckCircle size={15} />
         Open
-      </button>
+      </span>
     );
   }
 
