@@ -474,10 +474,10 @@ const SeekBar = memo(function SeekBar({
   return (
     <div>
       <SeekSlider value={position} max={dur} onSeek={seek} ariaLabel="Seek" />
-      <div className="flex justify-between text-[10px] tabular-nums text-white/50 sm:text-xs">
-        <span>{formatTime(position)}</span>
-        <span>{formatTime(dur)}</span>
-      </div>
+       <div className="flex justify-between text-xs font-medium tabular-nums text-white/60 sm:text-sm">
+         <span className="shrink-0">{formatTime(position)}</span>
+         <span className="shrink-0">{formatTime(dur)}</span>
+       </div>
     </div>
   );
 });
@@ -558,12 +558,12 @@ export function NowPlayingView() {
           <ChevronDown size={20} />
         </button>
 
-        <div className="text-center">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-white/50 sm:text-[11px]">
-            Playing from album
-          </p>
-          <p className="text-xs font-semibold text-white sm:text-sm">{current.album}</p>
-        </div>
+         <div className="min-w-0 flex-1 px-2 text-center">
+           <p className="text-[10px] font-semibold uppercase tracking-wider text-white/50 sm:text-[11px]">
+             Playing from album
+           </p>
+           <p className="break-words text-xs font-semibold leading-tight text-white sm:text-sm">{current.album}</p>
+         </div>
 
         <div className="flex items-center gap-1">
           <button
@@ -643,12 +643,12 @@ export function NowPlayingView() {
         <div className={`flex w-full max-w-[300px] items-start justify-between gap-3 px-0.5
           transition-all duration-300 sm:max-w-[340px] lg:max-w-[380px]
           ${lyricsOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
-          <div className="min-w-0">
-            <h1 className="break-words font-display text-xl font-bold leading-tight text-white sm:text-2xl">
-              {current.title}
-            </h1>
-            <p className="mt-0.5 truncate text-sm text-white/60">{current.artist}</p>
-          </div>
+           <div className="min-w-0">
+             <h1 className="break-words font-display text-xl font-bold leading-tight text-white sm:text-2xl">
+               {current.title}
+             </h1>
+             <p className="mt-0.5 break-words text-sm leading-snug text-white/60">{current.artist}</p>
+           </div>
           <button
             onClick={() => current && toggleLike(current)}
             aria-label={songLiked ? 'Unlike' : 'Like'}

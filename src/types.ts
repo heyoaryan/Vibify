@@ -15,10 +15,10 @@ export type Song = {
   src: string;
   /** Optional tags / genres */
   genre: string;
-  /** Real album art URL from JioSaavn or Audiomack (optional — static songs won't have this) */
+  /** Real album art URL from JioSaavn or Jamendo (optional — static songs won't have this) */
   imageUrl?: string;
-  /** Source provider — 'saavn' or 'audiomack' */
-  provider?: 'saavn' | 'audiomack';
+  /** Source provider — 'saavn' or 'jamendo' */
+  provider?: 'saavn' | 'jamendo';
 };
 
 export type Playlist = {

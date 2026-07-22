@@ -38,7 +38,7 @@ export function TopBar() {
   }, [dropdownOpen]);
 
   return (
-    <header className="sticky top-0 z-20 flex items-center gap-2 px-4 py-3 sm:px-6 sm:py-4 lg:px-8 lg:py-5">
+    <header className="sticky top-0 z-20 flex items-center px-4 py-3 sm:px-6 sm:py-4 lg:px-8 lg:py-5">
 
       {/* Back — desktop only, 44×44 touch target */}
       <button
@@ -52,7 +52,8 @@ export function TopBar() {
         <ArrowLeft size={17} />
       </button>
 
-      <h1 className="font-display text-lg font-bold text-ink-50 sm:text-xl lg:text-2xl">
+      {/* Centre title — absolutely centred regardless of side controls */}
+      <h1 className="pointer-events-none absolute left-1/2 -translate-x-1/2 text-center font-display text-lg font-bold text-ink-50 sm:text-xl lg:text-2xl">
         {title}
       </h1>
 

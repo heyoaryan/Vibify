@@ -15,7 +15,7 @@ import { canGuestPlaySong, consumeGuestPlayback } from './auth';
 import { getSettings } from './settings';
 import { recordPlay, addListenSeconds, flushListenSeconds } from './history';
 import { getQuickRecommendations } from './recommendations';
-import { getAudiomackTrackUrl, isAudiomackId } from './audios';
+import { getJamendoTrackUrl, isJamendoId } from './jamendo';
 
 // ─── Context is split into two parts ─────────────────────────────────────────
 // 1. PlayerContext  — stable state that changes only on song/control changes
@@ -311,10 +311,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const song = currentRef.current;
     const retries = retryCountRef.current;
 
-    // For Audiomack tracks, try refreshing the expired streaming URL first
-    if (isAudiomackId(song.id)) {
+    // For Jamendo tracks, try refreshing the expired streaming URL first
+    if (isJamendoId(song.id)) {
       try {
-        const freshUrl = await getAudiomackTrackUrl(song.id);
+        const freshUrl = await getJamendoTrackUrl(song.id);
         if (freshUrl) {
           retryCountRef.current = 0;
           playedRef.current = false;

@@ -150,18 +150,18 @@ export const LibraryView = memo(function LibraryView() {
                     </button>
 
                     {/* Title + artist */}
-                    <button
-                      onClick={() => handlePlaySong(song.id)}
-                      className="min-w-0 flex-1 text-left"
-                    >
-                      <p className={`truncate text-sm font-medium
-                        ${isCurrent ? 'text-brand-400' : 'text-ink-50'}`}>
-                        {song.title}
-                      </p>
-                      <p className="truncate text-xs text-ink-300 mt-0.5">
-                        {song.artist} · {song.album}
-                      </p>
-                    </button>
+                      <button
+                        onClick={() => handlePlaySong(song.id)}
+                        className="min-w-0 flex-1 text-left"
+                      >
+                        <p className={`line-clamp-2 break-words text-sm font-medium leading-snug
+                          ${isCurrent ? 'text-brand-400' : 'text-ink-50'}`}>
+                          {song.title}
+                        </p>
+                        <p className="mt-0.5 line-clamp-2 break-words text-xs leading-tight text-ink-300">
+                          {song.artist} · {song.album}
+                        </p>
+                      </button>
 
                     {/* Duration */}
                     <span className="shrink-0 text-xs tabular-nums text-ink-400">

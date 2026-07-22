@@ -35,7 +35,7 @@ declare global {
 
 // ─── Recent searches (sessionStorage) ────────────────────────────────────────
 const RECENT_KEY = 'vibify-recent-searches';
-const MAX_RECENT = 8;
+const MAX_RECENT = 5;
 
 function getRecentSearches(): string[] {
   try {
@@ -166,12 +166,12 @@ const SongRow = memo(function SongRow({
       </span>
       <Artwork title={song.title} hue={song.hue} hue2={song.hue2} imageUrl={song.imageUrl}
         className="h-10 w-10" rounded="rounded-md" />
-      <div className="min-w-0">
-        <p className={`truncate text-xs font-medium sm:text-sm ${isCurrent ? 'text-brand-400' : 'text-ink-50'}`}>
-          {song.title}
-        </p>
-        <p className="truncate text-[10px] text-ink-300 sm:text-xs">{song.artist} · {song.album}</p>
-      </div>
+       <div className="min-w-0">
+         <p className={`line-clamp-2 break-words text-xs font-medium leading-snug sm:text-sm ${isCurrent ? 'text-brand-400' : 'text-ink-50'}`}>
+           {song.title}
+         </p>
+         <p className="mt-0.5 line-clamp-2 break-words text-[10px] leading-snug text-ink-300 sm:text-xs">{song.artist} · {song.album}</p>
+       </div>
       <span className="hidden text-xs tabular-nums text-ink-300 sm:block">{formatTime(song.duration)}</span>
     </button>
   );
@@ -794,10 +794,12 @@ export const SearchView = memo(function SearchView() {
                 );
                 if (artistMatch.length >= Math.ceil(results.length * 0.6)) {
                   return (
-                    <>
-                      Songs by <span className="text-brand-400">{results[0].artist}</span>
-                      <span className="ml-2 text-sm font-normal text-ink-400">{results.length} songs</span>
-                    </>
+            <>
+              <span className="break-words">
+                Songs by <span className="text-brand-400">{results[0].artist}</span>
+              </span>
+              <span className="ml-2 shrink-0 text-sm font-normal text-ink-400">{results.length} songs</span>
+            </>
                   );
                 }
               }

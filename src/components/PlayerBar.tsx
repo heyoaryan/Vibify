@@ -3,7 +3,7 @@ import {
   Repeat, Repeat1, Shuffle, SkipBack, SkipForward,
 } from 'lucide-react';
 import { memo } from 'react';
-import { usePlayer } from '../player';
+import { usePlayer, usePlayback } from '../player';
 import { useNav } from '../nav';
 import { useLikes } from '../likes';
 import { Artwork } from './Artwork';
@@ -11,16 +11,55 @@ import { Artwork } from './Artwork';
 export const PlayerBar = memo(function PlayerBar() {
   const {
     current, isPlaying, repeat, shuffle,
-    togglePlay, next, prev, cycleRepeat, toggleShuffle,
+    togglePlay, next, prev, cycleRepeat, toggleShuffle, seek,
   } = usePlayer();
+  const { position, duration } = usePlayback();
   const { navigate } = useNav();
   const { isLiked, toggle: toggleLike } = useLikes();
 
   const songLiked = current ? isLiked(current.id) : false;
   const repeatActive = repeat !== 'off';
 
+  const progress = duration > 0 ? Math.min(100, (position / duration) * 100) : 0;
+
+  const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!current || duration <= 0) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+    seek(ratio * duration);
+  };
+
   return (
     <div className="relative z-30 px-2 pb-1 pt-0 sm:px-3 sm:pb-2 lg:px-4 lg:pb-3">
+      {/* Slim progress bar — tap to seek */}
+      {current && duration > 0 && (
+        <div
+          onClick={handleSeek}
+          role="slider"
+          aria-label="Seek"
+          aria-valuemin={0}
+          aria-valuemax={Math.floor(duration)}
+          aria-valuenow={Math.floor(position)}
+          tabIndex={0}
+          className="group relative mx-1 mb-1 h-3 cursor-pointer sm:mx-2"
+          onKeyDown={(e) => {
+            if (e.key === 'ArrowRight') seek(Math.min(duration, position + 5));
+            else if (e.key === 'ArrowLeft') seek(Math.max(0, position - 5));
+          }}
+        >
+          <div className="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 overflow-hidden rounded-full bg-white/10">
+            <div
+              className="h-full rounded-full bg-brand-400"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+          <div
+            className="absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white opacity-0 shadow transition-opacity group-hover:opacity-100"
+            style={{ left: `${progress}%` }}
+          />
+        </div>
+      )}
+
       {/* Ambient glow */}
       {current && isPlaying && (
         <div className="pointer-events-none absolute inset-x-4 -top-px h-px">
@@ -57,12 +96,16 @@ export const PlayerBar = memo(function PlayerBar() {
                   <Maximize2 size={12} className="text-white" />
                 </div>
               </button>
-              <div className="min-w-0">
+              <button
+                onClick={() => navigate({ name: 'nowplaying' })}
+                aria-label="Open now playing"
+                className="min-w-0 flex-1 text-left"
+              >
                 <p className="line-clamp-2 text-xs font-semibold leading-snug text-ink-50 sm:text-sm">
                   {current.title}
                 </p>
-                <p className="truncate text-[10px] text-ink-300 sm:text-xs">{current.artist}</p>
-              </div>
+                <p className="mt-0.5 line-clamp-1 break-words text-[10px] leading-tight text-ink-300 sm:text-xs">{current.artist}</p>
+              </button>
               <button
                 onClick={() => current && toggleLike(current)}
                 aria-label={songLiked ? 'Unlike' : 'Like'}

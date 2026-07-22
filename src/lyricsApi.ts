@@ -19,15 +19,13 @@ import { lyricsForSong as staticLyrics } from './lyrics';
 type CacheEntry = { lines: LyricLine[]; status: LyricsFetchStatus };
 const cache = new Map<string, CacheEntry>();
 
-// ─── URL helpers (proxy in dev, direct in prod) ───────────────────────────────
-const IS_DEV = import.meta.env.DEV;
-
+// ─── URL helpers (always proxied via Vercel rewrites) ─────────────────────────
 function lrclibUrl(path: string): string {
-  return IS_DEV ? `/lrclib${path}` : `https://lrclib.net${path}`;
+  return `/lrclib${path}`;
 }
 
 function ovhUrl(path: string): string {
-  return IS_DEV ? `/lyricsovh${path}` : `https://api.lyrics.ovh${path}`;
+  return `/lyricsovh${path}`;
 }
 
 // ─── Title / artist cleaning ──────────────────────────────────────────────────

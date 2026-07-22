@@ -30,11 +30,11 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/lyricsovh/, ''),
         secure: true,
       },
-      // Proxy Audiomack API to avoid CORS blocks in the browser (matches Vercel /api/audiomack)
-      '/api/audiomack': {
-        target: 'https://api.audiomack.com/v1',
+      // Proxy Jamendo API to avoid CORS blocks in the browser (matches Vercel /api/jamendo)
+      '/api/jamendo': {
+        target: 'https://api.jamendo.com',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/audiomack/, ''),
+        rewrite: (path) => path.replace(/^\/api\/jamendo/, '/v3.0'),
         secure: true,
       },
     },

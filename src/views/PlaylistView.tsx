@@ -138,8 +138,8 @@ export const PlaylistView = memo(function PlaylistView({ id }: { id: string }) {
               </span>
               <Artwork title={s.title} hue={s.hue} hue2={s.hue2} imageUrl={s.imageUrl} className="h-10 w-10" rounded="rounded-md" />
               <div className="min-w-0">
-                <p className={`truncate text-sm font-medium ${isCurrent ? 'text-brand-400' : 'text-ink-50'}`}>{s.title}</p>
-                <p className="truncate text-xs text-ink-300">{s.artist}</p>
+                <p className={`line-clamp-2 break-words text-sm font-medium leading-snug ${isCurrent ? 'text-brand-400' : 'text-ink-50'}`}>{s.title}</p>
+                <p className="mt-0.5 line-clamp-1 break-words text-xs leading-tight text-ink-300">{s.artist}</p>
               </div>
               <div className="flex items-center gap-3">
                 <button

@@ -164,10 +164,10 @@ export const RoomView = function RoomView() {
   if (!roomState) {
     if (showMemberSelect) {
       return (
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-6 px-4">
-          <div className="text-center">
-            <h2 className="font-display text-2xl font-bold text-ink-50 sm:text-3xl">Create Room</h2>
-            <p className="mt-2 text-sm text-ink-400">How many members can join?</p>
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-8 px-4 py-10 text-center">
+          <div className="flex max-w-sm flex-col items-center">
+            <h2 className="font-display text-3xl font-bold text-ink-50 sm:text-4xl">Create Room</h2>
+            <p className="mt-2 text-sm text-ink-300 sm:text-base">How many members can join?</p>
           </div>
 
           <div className="flex flex-wrap justify-center gap-3">
@@ -176,7 +176,7 @@ export const RoomView = function RoomView() {
                 key={count}
                 onClick={() => handleMemberSelect(count)}
                 disabled={isLoading}
-                className={`flex h-14 w-14 items-center justify-center rounded-2xl text-lg font-bold transition-all border border-white/10 text-ink-100 hover:bg-white/5`}
+                className="flex h-14 w-14 items-center justify-center rounded-2xl text-lg font-bold transition-all border border-white/10 text-ink-100 hover:bg-white/5"
               >
                 {count}
               </button>
@@ -194,17 +194,20 @@ export const RoomView = function RoomView() {
     }
 
     return (
-      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-6 px-4">
-        <div className="text-center">
-           <h2 className="font-display text-2xl font-bold text-ink-50 sm:text-3xl">Room</h2>
-          <p className="mt-2 text-sm text-ink-400">Listen together with friends in real-time</p>
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-8 px-4 py-10 text-center">
+        <div className="flex max-w-sm flex-col items-center">
+          <div className="mb-5 grid h-16 w-16 place-items-center rounded-2xl bg-brand-500/15 text-brand-300 shadow-glow">
+            <Music2 size={30} />
+          </div>
+          <h2 className="font-display text-3xl font-bold text-ink-50 sm:text-4xl">Room</h2>
+          <p className="mt-2 text-sm text-ink-300 sm:text-base">Listen together with friends in real-time</p>
         </div>
 
         <div className="flex w-full max-w-xs flex-col items-center gap-4">
           <button
             onClick={handleCreateClick}
             disabled={isLoading}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-400 py-4 text-base font-bold text-ink-950 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
+            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-400 py-4 text-base font-bold text-ink-950 shadow-glow transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
           >
             <Plus size={20} />
             Create Room
@@ -236,7 +239,7 @@ export const RoomView = function RoomView() {
         </div>
 
         {error && (
-          <p className="text-sm text-red-400">{error}</p>
+          <p className="text-center text-sm text-red-400">{error}</p>
         )}
       </div>
     );
@@ -393,8 +396,8 @@ export const RoomView = function RoomView() {
                           </div>
                         )}
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium text-ink-100">{s.title}</p>
-                          <p className="truncate text-xs text-ink-400">{s.artist}</p>
+                          <p className="line-clamp-2 break-words text-sm font-medium leading-snug text-ink-100">{s.title}</p>
+                          <p className="mt-0.5 line-clamp-1 break-words text-xs text-ink-400">{s.artist}</p>
                         </div>
                       </button>
                     ))}
