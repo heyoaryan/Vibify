@@ -6,9 +6,9 @@ const CLIENT_SECRET = process.env.JAMENDO_CLIENT_SECRET || '';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
-    const rawUrl = req.url || '/';
-    const [urlPath] = rawUrl.split('?');
-    const path = urlPath.replace(/^\/api\/jamendo/, '') || '/';
+    let path = '/';
+    const paramsPath = (req as { params?: { path?: string } }).params?.path;
+    if (paramsPath) path = '/' + paramsPath;
 
     const qs = new URLSearchParams();
     for (const [key, value] of Object.entries(req.query)) {

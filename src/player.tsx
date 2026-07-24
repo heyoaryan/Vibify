@@ -76,7 +76,6 @@ function makeAudio() {
   if (typeof Audio === 'undefined') return null;
   const el = new Audio();
   el.preload = 'auto';
-  el.crossOrigin = 'anonymous';
   return el;
 }
 
