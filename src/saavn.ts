@@ -1,234 +1,43 @@
 /**
- * JioSaavn API client — uses the official JioSaavn internal API (www.jiosaavn.com/api.php)
+ * JioSaavn API client — uses jiosavan-api2.vercel.app (public wrapper)
  *
- * Flow:
- *  1. search.getResults  → get song IDs + metadata
- *  2. song.getDetails    → batch-fetch full encrypted_media_url (comma-separated IDs, 1 request)
- *  3. decryptUrl()       → DES-ECB decrypt to get a real CDN audio URL
+ * This wrapper returns direct downloadUrl[] per song — no DES decryption,
+ * no geo-restriction issues, works identically in dev and production.
  */
 
 import type { Song } from './types';
 import { getSettings } from './settings';
 import { searchJamendo, getTrendingJamendo, getJamendoTrackUrl, isJamendoId } from './jamendo';
 
-// In dev, Vite proxies /jiosaavn/* → https://www.jiosaavn.com/*
-// In production, Vercel rewrites /jiosaavn/api.php → /api/jiosaavn (serverless proxy)
-const JIOSAAVN_API = '/jiosaavn/api.php';
-const DES_KEY = '38346591';
+const API_BASE = 'https://jiosavan-api2.vercel.app/api';
 
-/**
- * In production, JioSaavn CDN URLs (akamaized.net) are geo-restricted to India.
- * Vercel servers are outside India, so we proxy audio through /api/audio.
- * In dev, Vite runs locally in India so the direct URL works fine.
- */
-function proxyAudioUrl(cdnUrl: string): string {
-  if (!cdnUrl) return cdnUrl;
-  // Dev: direct URL works (running in India)
-  if (import.meta.env.DEV) return cdnUrl;
-  // Production: route through server-side proxy
-  return `/api/audio?url=${encodeURIComponent(cdnUrl)}`;
-}
+// ─── Types ───────────────────────────────────────────────────────────────────
 
-// ─── DES-ECB decryption (Web Crypto API) ────────────────────────────────────
+type DownloadUrl = { quality: string; url: string };
 
-/**
- * Decrypt a JioSaavn encrypted_media_url using DES-ECB with key '38346591'.
- * The Web Crypto API doesn't support DES, so we use a tiny pure-JS DES impl.
- */
-
-// Minimal DES-ECB implementation (public domain, compatible with JioSaavn's key scheme)
-// Based on the algorithm used by every open-source JioSaavn client.
-function desDecrypt(ciphertext: Uint8Array, keyStr: string): Uint8Array {
-  const key = strToBytes(keyStr);
-  const subkeys = generateSubkeys(key);
-  const out = new Uint8Array(ciphertext.length);
-  for (let i = 0; i < ciphertext.length; i += 8) {
-    const block = ciphertext.slice(i, i + 8);
-    const dec = desBlock(block, subkeys, true);
-    out.set(dec, i);
-  }
-  return out;
-}
-
-function strToBytes(s: string): Uint8Array {
-  const b = new Uint8Array(s.length);
-  for (let i = 0; i < s.length; i++) b[i] = s.charCodeAt(i) & 0xff;
-  return b;
-}
-
-// Initial permutation table
-const IP = [
-  58,50,42,34,26,18,10,2, 60,52,44,36,28,20,12,4,
-  62,54,46,38,30,22,14,6, 64,56,48,40,32,24,16,8,
-  57,49,41,33,25,17, 9,1, 59,51,43,35,27,19,11,3,
-  61,53,45,37,29,21,13,5, 63,55,47,39,31,23,15,7
-];
-const IP_INV = [
-  40,8,48,16,56,24,64,32, 39,7,47,15,55,23,63,31,
-  38,6,46,14,54,22,62,30, 37,5,45,13,53,21,61,29,
-  36,4,44,12,52,20,60,28, 35,3,43,11,51,19,59,27,
-  34,2,42,10,50,18,58,26, 33,1,41, 9,49,17,57,25
-];
-const E = [
-  32,1,2,3,4,5, 4,5,6,7,8,9, 8,9,10,11,12,13,
-  12,13,14,15,16,17, 16,17,18,19,20,21, 20,21,22,23,24,25,
-  24,25,26,27,28,29, 28,29,30,31,32,1
-];
-const P = [
-  16,7,20,21,29,12,28,17, 1,15,23,26,5,18,31,10,
-  2,8,24,14,32,27,3,9,   19,13,30,6,22,11,4,25
-];
-const S_BOXES = [
-  [14,4,13,1,2,15,11,8,3,10,6,12,5,9,0,7,0,15,7,4,14,2,13,1,10,6,12,11,9,5,3,8,4,1,14,8,13,6,2,11,15,12,9,7,3,10,5,0,15,12,8,2,4,9,1,7,5,11,3,14,10,0,6,13],
-  [15,1,8,14,6,11,3,4,9,7,2,13,12,0,5,10,3,13,4,7,15,2,8,14,12,0,1,10,6,9,11,5,0,14,7,11,10,4,13,1,5,8,12,6,9,3,2,15,13,8,10,1,3,15,4,2,11,6,7,12,0,5,14,9],
-  [10,0,9,14,6,3,15,5,1,13,12,7,11,4,2,8,13,7,0,9,3,4,6,10,2,8,5,14,12,11,15,1,13,6,4,9,8,15,3,0,11,1,2,12,5,10,14,7,1,10,13,0,6,9,8,7,4,15,14,3,11,5,2,12],
-  [7,13,14,3,0,6,9,10,1,2,8,5,11,12,4,15,13,8,11,5,6,15,0,3,4,7,2,12,1,10,14,9,10,6,9,0,12,11,7,13,15,1,3,14,5,2,8,4,3,15,0,6,10,1,13,8,9,4,5,11,12,7,2,14],
-  [2,12,4,1,7,10,11,6,8,5,3,15,13,0,14,9,14,11,2,12,4,7,13,1,5,0,15,10,3,9,8,6,4,2,1,11,10,13,7,8,15,9,12,5,6,3,0,14,11,8,12,7,1,14,2,13,6,15,0,9,10,4,5,3],
-  [12,1,10,15,9,2,6,8,0,13,3,4,14,7,5,11,10,15,4,2,7,12,9,5,6,1,13,14,0,11,3,8,9,14,15,5,2,8,12,3,7,0,4,10,1,13,11,6,4,3,2,12,9,5,15,10,11,14,1,7,6,0,8,13],
-  [4,11,2,14,15,0,8,13,3,12,9,7,5,10,6,1,13,0,11,7,4,9,1,10,14,3,5,12,2,15,8,6,1,4,11,13,12,3,7,14,10,15,6,8,0,5,9,2,6,11,13,8,1,4,10,7,9,5,0,15,14,2,3,12],
-  [13,2,8,4,6,15,11,1,10,9,3,14,5,0,12,7,1,15,13,8,10,3,7,4,12,5,6,11,0,14,9,2,7,11,4,1,9,12,14,2,0,6,10,13,15,3,5,8,2,1,14,7,4,10,8,13,15,12,9,0,3,5,6,11]
-];
-const PC1 = [57,49,41,33,25,17,9,1,58,50,42,34,26,18,10,2,59,51,43,35,27,19,11,3,60,52,44,36,63,55,47,39,31,23,15,7,62,54,46,38,30,22,14,6,61,53,45,37,29,21,13,5,28,20,12,4];
-const PC2 = [14,17,11,24,1,5,3,28,15,6,21,10,23,19,12,4,26,8,16,7,27,20,13,2,41,52,31,37,47,55,30,40,51,45,33,48,44,49,39,56,34,53,46,42,50,36,29,32];
-const SHIFTS = [1,1,2,2,2,2,2,2,1,2,2,2,2,2,2,1];
-
-function permute(bits: number[], table: number[]): number[] {
-  return table.map(p => bits[p - 1]);
-}
-
-function bytesToBits(bytes: Uint8Array): number[] {
-  const bits: number[] = [];
-  for (const b of bytes) for (let i = 7; i >= 0; i--) bits.push((b >> i) & 1);
-  return bits;
-}
-
-function bitsToBytes(bits: number[]): Uint8Array {
-  const bytes = new Uint8Array(bits.length / 8);
-  for (let i = 0; i < bytes.length; i++) {
-    let val = 0;
-    for (let j = 0; j < 8; j++) val = (val << 1) | bits[i * 8 + j];
-    bytes[i] = val;
-  }
-  return bytes;
-}
-
-function rotateLeft(arr: number[], n: number): number[] {
-  return [...arr.slice(n), ...arr.slice(0, n)];
-}
-
-function generateSubkeys(key: Uint8Array): number[][] {
-  const keyBits = bytesToBits(key);
-  const permuted = permute(keyBits, PC1);
-  let C = permuted.slice(0, 28);
-  let D = permuted.slice(28, 56);
-  const subkeys: number[][] = [];
-  for (let i = 0; i < 16; i++) {
-    C = rotateLeft(C, SHIFTS[i]);
-    D = rotateLeft(D, SHIFTS[i]);
-    subkeys.push(permute([...C, ...D], PC2));
-  }
-  return subkeys;
-}
-
-function feistel(R: number[], subkey: number[]): number[] {
-  const expanded = permute(R, E);
-  const xored = expanded.map((b, i) => b ^ subkey[i]);
-  const sResult: number[] = [];
-  for (let i = 0; i < 8; i++) {
-    const block = xored.slice(i * 6, i * 6 + 6);
-    const row = (block[0] << 1) | block[5];
-    const col = (block[1] << 3) | (block[2] << 2) | (block[3] << 1) | block[4];
-    const val = S_BOXES[i][row * 16 + col];
-    for (let j = 3; j >= 0; j--) sResult.push((val >> j) & 1);
-  }
-  return permute(sResult, P);
-}
-
-function desBlock(block: Uint8Array, subkeys: number[][], decrypt: boolean): Uint8Array {
-  const bits = permute(bytesToBits(block), IP);
-  let L = bits.slice(0, 32);
-  let R = bits.slice(32, 64);
-  const keys = decrypt ? [...subkeys].reverse() : subkeys;
-  for (const sk of keys) {
-    const newR = L.map((b, i) => b ^ feistel(R, sk)[i]);
-    L = R;
-    R = newR;
-  }
-  return bitsToBytes(permute([...R, ...L], IP_INV));
-}
-
-/** Decode a JioSaavn encrypted_media_url to a plain CDN URL */
-function decryptUrl(encryptedUrl: string): string {
-  // Normalize base64 (standard, not URL-safe)
-  let b64 = encryptedUrl.replace(/-/g, '+').replace(/_/g, '/');
-  while (b64.length % 4) b64 += '=';
-
-  const cipher = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-
-  // Pad to multiple of 8 (DES block size)
-  let padded = cipher;
-  if (cipher.length % 8 !== 0) {
-    const extra = 8 - (cipher.length % 8);
-    padded = new Uint8Array(cipher.length + extra);
-    padded.set(cipher);
-  }
-
-  const plain = desDecrypt(padded, DES_KEY);
-
-  // Strip PKCS5/PKCS7 padding from the end of the decrypted block.
-  // The last byte tells us how many padding bytes to remove (value 1–8).
-  let end = plain.length;
-  if (end > 0) {
-    const padByte = plain[end - 1];
-    if (padByte >= 1 && padByte <= 8) {
-      // Validate: all trailing `padByte` bytes must equal `padByte`
-      let valid = true;
-      for (let i = end - padByte; i < end; i++) {
-        if (plain[i] !== padByte) { valid = false; break; }
-      }
-      if (valid) end -= padByte;
-    }
-  }
-
-  // Convert to string — only printable ASCII, stop at first null byte
-  let url = '';
-  for (let i = 0; i < end; i++) {
-    if (plain[i] === 0) break;
-    if (plain[i] >= 0x20 && plain[i] <= 0x7e) url += String.fromCharCode(plain[i]);
-  }
-  return url.trim();
-}
-
-/** Given a decrypted CDN URL (e.g. ending _96.mp4), swap to preferred quality */
-function qualityUrl(url: string, quality: '96' | '160' | '320'): string {
-  return url.replace(/_\d+\.mp4$/, `_${quality}.mp4`);
-}
-
-// ─── API response types ──────────────────────────────────────────────────────
-
-type JioSearchResult = {
+type ApiSong = {
   id: string;
-  song: string;           // HTML-encoded title
-  album: string;
+  name: string;
+  artists: { primary: Array<{ name: string }> };
+  album: { name: string };
   year: string;
+  duration: number;
   language: string;
-  duration: string | number;
-  primary_artists: string;
-  image: string;          // ends with -150x150.jpg
-  '320kbps': string | boolean;
-  encrypted_media_url: string;  // may be truncated in search results
+  image: Array<{ quality: string; url: string }>;
+  downloadUrl: DownloadUrl[];
 };
 
-type JioSearchResponse = {
-  total: number;
-  results: JioSearchResult[];
+type SearchResponse = {
+  success: boolean;
+  data: { results: ApiSong[] };
 };
 
-type JioDetailSong = JioSearchResult & {
-  encrypted_media_url: string;  // full URL here
+type SongResponse = {
+  success: boolean;
+  data: ApiSong[];
 };
 
-// ─── Text helpers ────────────────────────────────────────────────────────────
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function decodeHtml(raw: string): string {
   return raw
@@ -249,129 +58,134 @@ function cleanTitle(raw: string): string {
   return t.replace(/\s{2,}/g, ' ').trim();
 }
 
-/** Replace -150x150.jpg with -500x500.jpg in JioSaavn image URLs */
-function highResImage(url: string): string {
-  return url.replace(/-\d+x\d+\.jpg$/, '-500x500.jpg');
+/** Pick best audio URL based on user quality setting */
+function pickUrl(downloadUrl: DownloadUrl[]): string {
+  if (!downloadUrl?.length) return '';
+  const { audioQuality, dataSaver } = getSettings();
+
+  type ConnectionInfo = { effectiveType?: string; saveData?: boolean };
+  const conn = (navigator as unknown as { connection?: ConnectionInfo }).connection;
+  const slowNetwork = conn?.effectiveType === 'slow-2g' || conn?.effectiveType === '2g' || conn?.saveData;
+
+  const wantQuality = dataSaver || slowNetwork ? '96kbps' : `${audioQuality}kbps`;
+
+  // Try exact match first, then fallback down
+  const order = ['320kbps', '160kbps', '96kbps', '48kbps', '12kbps'];
+  const wantIdx = order.indexOf(wantQuality);
+  const candidates = order.slice(Math.max(0, wantIdx));
+
+  for (const q of candidates) {
+    const found = downloadUrl.find(d => d.quality === q);
+    if (found?.url) return found.url;
+  }
+  // Last resort — any available
+  return downloadUrl[downloadUrl.length - 1]?.url ?? '';
 }
 
-// ─── Song mapper ─────────────────────────────────────────────────────────────
+/** Map an ApiSong to our internal Song type */
+function mapSong(s: ApiSong): Song | null {
+  const src = pickUrl(s.downloadUrl);
+  if (!src) return null;
 
-function mapSong(raw: JioDetailSong): Song | null {
-  const encUrl = raw.encrypted_media_url;
-  if (!encUrl) return null;
+  const artist = decodeHtml(s.artists?.primary?.[0]?.name ?? 'Unknown');
+  const hash = s.id.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+  const image500 = s.image?.find(i => i.quality === '500x500')?.url
+    ?? s.image?.[s.image.length - 1]?.url
+    ?? '';
 
-  let audioUrl = '';
-  try {
-    const base = decryptUrl(encUrl);
-    if (!base) return null;
-    const { audioQuality, dataSaver } = getSettings();
-    type ConnectionInfo = { effectiveType?: string; saveData?: boolean };
-    const conn = (navigator as unknown as { connection?: ConnectionInfo }).connection;
-    const slowNetwork = conn?.effectiveType === 'slow-2g' || conn?.effectiveType === '2g' || conn?.saveData;
-    const quality = dataSaver || slowNetwork ? '96' : audioQuality;
-    audioUrl = proxyAudioUrl(qualityUrl(base, quality));
-  } catch {
-    return null;
-  }
-
-  const hash = raw.id.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+  const lang = s.language?.toLowerCase() ?? '';
+  const genre = lang === 'hindi' ? 'Hindi'
+    : lang === 'english' ? 'English'
+    : lang === 'punjabi' ? 'Punjabi'
+    : lang === 'korean' ? 'K-Pop'
+    : lang === 'tamil' ? 'Tamil'
+    : lang === 'telugu' ? 'Telugu'
+    : lang || 'Other';
 
   return {
-    id: raw.id,
-    title: cleanTitle(raw.song),
-    artist: decodeHtml(raw.primary_artists.split(',')[0].trim()),
-    album: cleanTitle(raw.album),
-    year: parseInt(String(raw.year), 10) || new Date().getFullYear(),
-    duration: typeof raw.duration === 'string' ? parseInt(raw.duration, 10) : raw.duration,
+    id: s.id,
+    title: cleanTitle(s.name),
+    artist,
+    album: cleanTitle(s.album?.name ?? ''),
+    year: parseInt(s.year, 10) || new Date().getFullYear(),
+    duration: s.duration ?? 0,
     hue: hash % 360,
     hue2: (hash * 7) % 360,
-    src: audioUrl,
-    genre: raw.language === 'hindi' ? 'Hindi' : raw.language === 'english' ? 'English' : 'Other',
-    imageUrl: highResImage(raw.image),
+    src,
+    genre,
+    imageUrl: image500,
     provider: 'saavn' as const,
   };
 }
 
-// ─── Public API ──────────────────────────────────────────────────────────────
-
-/** Deduplicate songs by id then by title+artist */
+/** Deduplicate songs by id, then by title+artist */
 function dedupSongs(songs: Song[]): Song[] {
   const seenIds = new Set<string>();
   const seenTitleArtist = new Set<string>();
-  const unique: Song[] = [];
-  for (const song of songs) {
-    if (seenIds.has(song.id)) continue;
-    const key = `${song.title.toLowerCase().trim()}|${song.artist.toLowerCase().trim()}`;
-    if (seenTitleArtist.has(key)) continue;
-    seenIds.add(song.id);
+  return songs.filter(s => {
+    if (seenIds.has(s.id)) return false;
+    const key = `${s.title.toLowerCase().trim()}|${s.artist.toLowerCase().trim()}`;
+    if (seenTitleArtist.has(key)) return false;
+    seenIds.add(s.id);
     seenTitleArtist.add(key);
-    unique.push(song);
-  }
-  return unique;
+    return true;
+  });
 }
 
-/** Batch-fetch full song details for a list of IDs and return mapped Songs */
-async function fetchSongDetails(ids: string[]): Promise<Song[]> {
-  if (!ids.length) return [];
-  const detailUrl =
-    `${JIOSAAVN_API}?__call=song.getDetails&cc=in&_marker=0&_format=json&pids=${ids.join(',')}`;
-  const res = await fetch(detailUrl);
-  if (!res.ok) throw new Error(`Detail HTTP ${res.status}`);
-  const json: Record<string, JioDetailSong> = await res.json();
-  return Object.values(json)
-    .map(s => mapSong(s))
-    .filter((s): s is Song => s !== null && !!s.src);
-}
+// ─── Core fetch functions ────────────────────────────────────────────────────
 
-/** Saavn song search — returns mapped Songs */
-async function searchSaavnSongs(query: string, limit: number): Promise<Song[]> {
+/** Search songs from JioSaavn via the public API wrapper */
+async function searchSaavnSongs(query: string, limit = 20): Promise<Song[]> {
   try {
-    const searchUrl =
-      `${JIOSAAVN_API}?__call=search.getResults&q=${encodeURIComponent(query)}&p=1&n=${limit}&_format=json&_marker=0&ctx=web6dot0`;
-    const searchRes = await fetch(searchUrl);
-    if (!searchRes.ok) return [];
-
-    const searchJson: JioSearchResponse = await searchRes.json();
-    const results = searchJson?.results;
-    if (!results?.length) return [];
-
-    return fetchSongDetails(results.map(r => r.id));
+    const url = `${API_BASE}/search/songs?query=${encodeURIComponent(query)}&page=1&limit=${limit}`;
+    const res = await fetch(url, { headers: { Accept: 'application/json' } });
+    if (!res.ok) return [];
+    const json: SearchResponse = await res.json();
+    if (!json.success) return [];
+    return json.data.results
+      .map(s => mapSong(s))
+      .filter((s): s is Song => s !== null && !!s.src);
   } catch {
     return [];
   }
 }
 
-/** Search songs by query using both Saavn and Jamendo in parallel — Saavn first */
-export async function searchSongs(query: string, limit = 20): Promise<Song[]> {
-  if (!query.trim()) return [];
-  const q = query.trim();
-
+/** Fetch song details by ID */
+async function fetchSongById(id: string): Promise<Song | null> {
   try {
-    const [saavnResults, jamendoResults] = await Promise.all([
-      searchSaavnSongs(q, limit),
-      searchJamendo(q, limit),
-    ]);
-
-    const all = [...saavnResults, ...jamendoResults];
-    return dedupSongs(all);
-  } catch (error) {
-    console.error('searchSongs error:', error);
-    const saavn = await searchSaavnSongs(query, limit);
-    const jamendo = await searchJamendo(query, limit);
-    return dedupSongs([...saavn, ...jamendo]);
+    const url = `${API_BASE}/songs/${id}`;
+    const res = await fetch(url, { headers: { Accept: 'application/json' } });
+    if (!res.ok) return null;
+    const json: SongResponse = await res.json();
+    if (!json.success || !json.data?.length) return null;
+    return mapSong(json.data[0]);
+  } catch {
+    return null;
   }
 }
 
-/** Trending songs — Saavn + Jamendo in parallel, merged */
+// ─── Public API ──────────────────────────────────────────────────────────────
+
+/** Search songs — JioSaavn + Jamendo in parallel */
+export async function searchSongs(query: string, limit = 20): Promise<Song[]> {
+  if (!query.trim()) return [];
+  const [saavn, jamendo] = await Promise.all([
+    searchSaavnSongs(query, limit),
+    searchJamendo(query, limit),
+  ]);
+  return dedupSongs([...saavn, ...jamendo]);
+}
+
+/** Trending songs */
 export async function getTrendingSongs(limit = 20): Promise<Song[]> {
   const [saavn, jamendo] = await Promise.all([
-    searchSaavnSongs('trending hindi 2025', limit),
+    searchSaavnSongs('trending hindi songs 2025', limit),
     getTrendingJamendo(limit),
   ]);
   return dedupSongs([...saavn, ...jamendo]);
 }
 
-/** New releases — Saavn + Jamendo in parallel, merged */
+/** New releases */
 export async function getNewReleases(limit = 20): Promise<Song[]> {
   const [saavn, jamendo] = await Promise.all([
     searchSaavnSongs('new hindi songs 2025', limit),
@@ -380,7 +194,7 @@ export async function getNewReleases(limit = 20): Promise<Song[]> {
   return dedupSongs([...saavn, ...jamendo]);
 }
 
-/** Top songs by artist — Saavn + Jamendo in parallel, merged */
+/** Top songs by artist */
 export async function getArtistSongs(artistName: string, limit = 10): Promise<Song[]> {
   const [saavn, jamendo] = await Promise.all([
     searchSaavnSongs(artistName, limit),
@@ -389,22 +203,12 @@ export async function getArtistSongs(artistName: string, limit = 10): Promise<So
   return dedupSongs([...saavn, ...jamendo]);
 }
 
-/** Get a single song's details by JioSaavn song ID */
+/** Single song by JioSaavn song ID */
 export async function getSongDetails(songId: string): Promise<Song | null> {
-  try {
-    const url = `${JIOSAAVN_API}?__call=song.getDetails&cc=in&_marker=0&_format=json&pids=${songId}`;
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    const json: Record<string, JioDetailSong> = await res.json();
-    const song = Object.values(json)[0];
-    if (!song) return null;
-    return mapSong(song);
-  } catch {
-    return null;
-  }
+  return fetchSongById(songId);
 }
 
-/** Refresh streaming URLs for Jamendo songs that have empty or likely-expired src */
+/** Refresh Jamendo URLs — src may expire */
 export async function refreshJamendoUrls(songs: Song[]): Promise<Song[]> {
   const jmSongs = songs.filter(s => isJamendoId(s.id) && (!s.src || s.src.length === 0));
   if (!jmSongs.length) return songs;
@@ -413,7 +217,7 @@ export async function refreshJamendoUrls(songs: Song[]): Promise<Song[]> {
     jmSongs.map(async (song) => {
       const freshUrl = await getJamendoTrackUrl(song.id);
       return freshUrl ? { ...song, src: freshUrl } : song;
-    })
+    }),
   );
 
   const refreshedIds = new Set(refreshed.map(s => s.id));
