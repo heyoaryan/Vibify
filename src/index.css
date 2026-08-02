@@ -1,4 +1,8 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap');
+/* Fonts are loaded non-blocking via <link media="print" onload> in index.html.
+   This @import is a safety-net fallback only (e.g. standalone CSS consumers).
+   display=swap means text renders in the system font immediately while the
+   web font downloads — no invisible text (FOIT) on slow connections. */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap') layer(fonts);
 
 @tailwind base;
 @tailwind components;

@@ -10,7 +10,6 @@
     <title>Vibify — Music for every moment</title>
     <meta name="description" content="Vibify — Music for every moment" />
     <meta name="application-name" content="Vibify" />
-    <meta name="generator" content="Vite" />
     <meta name="format-detection" content="telephone=no" />
     <meta name="color-scheme" content="dark" />
 
@@ -18,8 +17,10 @@
     <meta name="theme-color" content="#05090c" />
 
     <!-- ── Favicon / icons ────────────────────────────────────────────── -->
-    <link rel="icon" type="image/png" href="/icons/logo.png" />
-    <link rel="apple-touch-icon" href="/icons/logo.png" />
+    <!-- Use the 192px icon as favicon — avoids serving a 1024px PNG for a 16px slot -->
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+    <link rel="icon" type="image/png" sizes="32x32"   href="/icons/icon-96.png" />
+    <link rel="apple-touch-icon" sizes="192x192"      href="/icons/icon-192.png" />
 
     <!-- ── PWA manifest ────────────────────────────────────────────────── -->
     <link rel="manifest" href="/manifest.webmanifest" />
@@ -35,7 +36,7 @@
 
     <!-- ── Windows / Microsoft ─────────────────────────────────────────── -->
     <meta name="msapplication-TileColor" content="#05090c" />
-    <meta name="msapplication-TileImage" content="/icons/logo.png" />
+    <meta name="msapplication-TileImage" content="/icons/icon-192.png" />
     <meta name="msapplication-tap-highlight" content="no" />
     <meta name="msapplication-starturl" content="/" />
 
@@ -43,15 +44,51 @@
     <meta property="og:type" content="website" />
     <meta property="og:title" content="Vibify — Music for every moment" />
     <meta property="og:description" content="Stream your favourite songs, albums and playlists." />
-    <meta property="og:image" content="/icons/logo.png" />
-    <meta property="og:image:width" content="1024" />
-    <meta property="og:image:height" content="1024" />
+    <meta property="og:image" content="/icons/icon-512.png" />
+    <meta property="og:image:width" content="512" />
+    <meta property="og:image:height" content="512" />
 
     <!-- ── Twitter card ───────────────────────────────────────────────── -->
     <meta name="twitter:card" content="summary" />
     <meta name="twitter:title" content="Vibify — Music for every moment" />
     <meta name="twitter:description" content="Stream your favourite songs, albums and playlists." />
-    <meta name="twitter:image" content="/icons/logo.png" />
+    <meta name="twitter:image" content="/icons/icon-512.png" />
+
+    <!-- ── Performance: DNS + TLS pre-negotiation ─────────────────────── -->
+    <!-- Tells the browser to open a connection to these origins ASAP so the
+         font request doesn't stall waiting for DNS + TLS handshake (~150ms). -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- JioSaavn CDN — audio + artwork loads faster after first song play -->
+    <link rel="dns-prefetch" href="https://jiosavan-api2.vercel.app" />
+    <link rel="dns-prefetch" href="https://api.jamendo.com" />
+
+    <!-- ── Non-blocking Google Fonts ──────────────────────────────────── -->
+    <!-- media="print" trick: the browser downloads the stylesheet without
+         blocking rendering. onload flips it to "all" once ready.
+         The <noscript> fallback handles JS-disabled environments. -->
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap"
+      media="print"
+      onload="this.media='all'"
+    />
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap"
+      />
+    </noscript>
+
+    <!-- ── Inline critical styles ─────────────────────────────────────── -->
+    <!-- These 8 lines cover the splash screen that shows before any JS loads.
+         Prevents a white flash on cold start. Zero render-blocking overhead. -->
+    <style>
+      *{box-sizing:border-box;margin:0}
+      html,body,#root{height:100%;height:100dvh;background:#05090c}
+      body{color:#eef3f5;font-family:system-ui,sans-serif;-webkit-text-size-adjust:100%;overflow-x:hidden}
+      #root{display:flex;flex-direction:column}
+    </style>
   </head>
   <body>
     <div id="root"></div>

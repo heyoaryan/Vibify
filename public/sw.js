@@ -8,7 +8,7 @@
  *  - On activate: wipe all old caches so stale assets never linger
  */
 
-const CACHE_VERSION = 'vibify-v3';
+const CACHE_VERSION = 'vibify-v4';
 
 const PRECACHE_ASSETS = [
   '/',
@@ -19,6 +19,14 @@ const PRECACHE_ASSETS = [
 ];
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
+
+function isGoogleFont(request) {
+  const url = new URL(request.url);
+  return (
+    url.hostname === 'fonts.gstatic.com' ||
+    url.hostname === 'fonts.googleapis.com'
+  );
+}
 
 function isAudioOrMedia(request) {
   const url = new URL(request.url);
@@ -138,6 +146,23 @@ self.addEventListener('fetch', (event) => {
 
   // Only handle GET — let POST/PUT/DELETE pass through untouched
   if (request.method !== 'GET') return;
+
+  // Google Fonts — stale-while-revalidate, cached for 1 year
+  // Fonts are immutable once loaded; serving from cache is always correct.
+  if (isGoogleFont(request)) {
+    event.respondWith(
+      caches.open(CACHE_VERSION).then(async (cache) => {
+        const cached = await cache.match(request);
+        const networkFetch = fetch(request).then((response) => {
+          if (response.ok) cache.put(request, response.clone());
+          return response;
+        }).catch(() => cached); // offline: serve cached font silently
+        // Return cached immediately if available, fetch in background
+        return cached || networkFetch;
+      })
+    );
+    return;
+  }
 
   // Audio, media, streaming — always network, never cache
   if (isAudioOrMedia(request)) {
