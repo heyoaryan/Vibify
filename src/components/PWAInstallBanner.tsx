@@ -81,21 +81,33 @@ export function PWAInstallBanner({ standalone = false }: { standalone?: boolean 
     );
   }
 
-  // ── Desktop manual guide (macOS Safari / Firefox / unsupported) ──────────
+  // ── Desktop manual guide (macOS Safari / Firefox / Android Chrome fallback / unsupported) ──────────
   if (state === 'desktop-guide') {
-    const isSafari = /^((?!chrome|chromium|android).)*safari/i.test(navigator.userAgent);
-    const isFirefox = /firefox/i.test(navigator.userAgent);
+    const ua          = navigator.userAgent;
+    const isSafari    = /^((?!chrome|chromium|android).)*safari/i.test(ua);
+    const isFirefox   = /firefox/i.test(ua);
+    const isAndroid   = /android/i.test(ua);
+    const isChromium  = /chrome|chromium/i.test(ua);
+    // Android Chrome whose native prompt was already dismissed → show manual steps
+    const isAndroidChrome = isAndroid && isChromium;
+
+    const deviceLabel = isAndroidChrome ? 'Android Chrome'
+      : isSafari   ? 'macOS Safari'
+      : isFirefox  ? 'Firefox'
+      : 'Your browser';
 
     return (
-      <div role="dialog" aria-modal="false" aria-label="Install Vibify on desktop" className={cardCls}>
+      <div role="dialog" aria-modal="false" aria-label="Install Vibify" className={cardCls}>
         <div className="animate-fade-up rounded-2xl border border-white/10 bg-ink-900/95 p-4 shadow-2xl shadow-black/60 backdrop-blur-xl">
           <div className="mb-3 flex items-center gap-3">
             <VibifyLogo size={40} className="shrink-0" />
             <div className="flex-1">
               <p className="text-sm font-semibold text-ink-50">Install Vibify</p>
               <p className="flex items-center gap-1 text-xs text-ink-400">
-                <Monitor size={11} />
-                {isSafari ? 'macOS Safari' : isFirefox ? 'Firefox' : 'Desktop browser'}
+                {isAndroidChrome
+                  ? <Smartphone size={11} />
+                  : <Monitor size={11} />}
+                {deviceLabel}
               </p>
             </div>
             <button onClick={dismiss} aria-label="Dismiss"
@@ -105,7 +117,28 @@ export function PWAInstallBanner({ standalone = false }: { standalone?: boolean 
           </div>
 
           <ol className="space-y-2.5" aria-label="Installation steps">
-            {isSafari ? (
+            {isAndroidChrome ? (
+              <>
+                <li className="flex items-center gap-3">
+                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand-500/20 text-[11px] font-bold text-brand-300">1</span>
+                  <span className="text-xs text-ink-300">
+                    Tap the <strong className="text-ink-100">⋮</strong> menu (top-right) in Chrome
+                  </span>
+                </li>
+                <li className="flex items-center gap-3">
+                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand-500/20 text-[11px] font-bold text-brand-300">2</span>
+                  <span className="text-xs text-ink-300">
+                    Tap <strong className="text-ink-100">Add to Home screen</strong>
+                  </span>
+                </li>
+                <li className="flex items-center gap-3">
+                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand-500/20 text-[11px] font-bold text-brand-300">3</span>
+                  <span className="text-xs text-ink-300">
+                    Tap <strong className="text-ink-100">Add</strong> — Vibify is on your Home Screen!
+                  </span>
+                </li>
+              </>
+            ) : isSafari ? (
               <>
                 <li className="flex items-center gap-3">
                   <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand-500/20 text-[11px] font-bold text-brand-300">1</span>

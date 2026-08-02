@@ -58,6 +58,11 @@ function isFirefox(): boolean {
   return /firefox|fxios/i.test(navigator.userAgent);
 }
 
+/** True on any non-iOS, non-Android desktop/laptop environment */
+function isDesktop(): boolean {
+  return !isIOS() && !/android/i.test(navigator.userAgent);
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type BeforeInstallPromptEvent = Event & {
@@ -71,11 +76,14 @@ interface PWAInstallValue {
   state: InstallState;
   progress: number;
   platform: InstallPlatform;
+  isDesktopEnv: boolean;
   canShowInline: boolean;
   showBannerCard: boolean;
   install: () => void;
   openApp: () => void;
   dismiss: () => void;
+  /** Manually show the install guide for the current platform (for the top-bar button). */
+  triggerGuide: () => void;
 }
 
 const PWAInstallContext = createContext<PWAInstallValue | null>(null);
@@ -203,14 +211,42 @@ export function PWAInstallProvider({ children }: { children: ReactNode }) {
     setState('hidden');
   }, []);
 
-  const visible       = !dismissed && state !== 'hidden';
-  const canShowInline = visible && (state === 'available' || state === 'installing' || state === 'installed');
+  /**
+   * Called when the user taps the install button in the top bar.
+   * - Native (Android Chrome/Edge): fires the beforeinstallprompt directly.
+   *   If the prompt was already dismissed by the browser, shows a fallback guide.
+   * - iOS: shows the Share-menu guide card.
+   * - Desktop Safari / Firefox / unsupported: shows the desktop guide card.
+   */
+  const triggerGuide = useCallback(() => {
+    if (platform === 'native') {
+      if (promptRef.current) {
+        // Native prompt available — fire it immediately
+        install();
+      } else {
+        // Prompt was already dismissed or not yet fired — show browser guide
+        setDismissed(false);
+        setState('desktop-guide');
+      }
+    } else if (platform === 'ios') {
+      setDismissed(false);
+      setState('ios-guide');
+    } else {
+      // desktop-manual (macOS Safari, Firefox, etc.)
+      setDismissed(false);
+      setState('desktop-guide');
+    }
+  }, [platform, install]);
+
+  const visible        = !dismissed && state !== 'hidden';
+  const canShowInline  = visible && (state === 'available' || state === 'installing' || state === 'installed');
   const showBannerCard = visible && (state === 'ios-guide' || state === 'desktop-guide');
+  const isDesktopEnv   = isDesktop();
 
   const value: PWAInstallValue = {
     state, progress, platform,
-    canShowInline, showBannerCard,
-    install, openApp, dismiss,
+    isDesktopEnv, canShowInline, showBannerCard,
+    install, openApp, dismiss, triggerGuide,
   };
 
   return (
@@ -226,8 +262,8 @@ export function usePWAInstall(): PWAInstallValue {
   if (!ctx) {
     return {
       state: 'hidden', progress: 0, platform: 'native',
-      canShowInline: false, showBannerCard: false,
-      install: () => {}, openApp: () => {}, dismiss: () => {},
+      isDesktopEnv: false, canShowInline: false, showBannerCard: false,
+      install: () => {}, openApp: () => {}, dismiss: () => {}, triggerGuide: () => {},
     };
   }
   return ctx;

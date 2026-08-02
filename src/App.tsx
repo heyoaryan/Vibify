@@ -12,6 +12,8 @@ import { NoticeModal } from './components/NoticeModal';
 import { VibifyLogo } from './components/VibifyLogo';
 import { useIsLoggedIn } from './auth';
 import { supabase } from './supabase';
+import { loadLikesFromSupabase } from './likes';
+import { loadHistoryFromSupabase } from './history';
 
 // ─── Lazy-loaded views ────────────────────────────────────────────────────────
 // Each view is only downloaded when first navigated to, keeping the initial
@@ -171,6 +173,15 @@ export default function App() {
     // it makes a network call only when a token refresh is needed.
     supabase.auth.getSession().then(() => setAuthReady(true));
   }, []);
+
+  // When a real user signs in (or is already signed in on load), pull their
+  // liked songs and play history from Supabase so data is in sync across devices.
+  useEffect(() => {
+    if (isLoggedIn) {
+      loadLikesFromSupabase();
+      loadHistoryFromSupabase();
+    }
+  }, [isLoggedIn]);
 
   useEffect(() => {
     const handleGuestLimit = () => setGuestLimitOpen(true);

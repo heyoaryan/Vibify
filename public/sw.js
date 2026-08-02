@@ -8,7 +8,7 @@
  *  - On activate: wipe all old caches so stale assets never linger
  */
 
-const CACHE_VERSION = 'vibify-v4';
+const CACHE_VERSION = 'vibify-v5';
 
 const PRECACHE_ASSETS = [
   '/',

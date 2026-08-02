@@ -59,6 +59,9 @@ export function TopBar() {
 
       <div className="flex-1" />
 
+      {/* Desktop: install button sits left of where the sidebar ends */}
+      <InstallButton className="hidden lg:grid shrink-0 mr-2" />
+
       {/* Mobile / tablet: inline install button (left of pfp) + account avatar → dropdown */}
       <div ref={dropdownRef} className="relative flex items-center gap-2 lg:hidden">
         <InstallButton className="shrink-0" />

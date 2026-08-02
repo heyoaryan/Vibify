@@ -94,7 +94,7 @@ export function useRoom() {
   const positionSyncRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoStartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isHostRef = useRef(false);
-  const { togglePlay, seek, playSongs, current, isPlaying: localIsPlaying } = usePlayer();
+  const { togglePlay, seek, playSongs, current, isPlaying: localIsPlaying, clearPlayer } = usePlayer();
   const { position } = usePlayback();
   const user = useCurrentUser();
 
@@ -235,41 +235,37 @@ export function useRoom() {
               lastChangedBy: newRoom.last_changed_by || prev.lastChangedBy,
             };
 
+            const songChanged = updated.currentSong?.id !== prev.currentSong?.id;
+            const statusStarted = updated.status === 'playing' && prev.status === 'waiting';
+
             if (!isHostRef.current) {
-              // Handle queue and song changes for non-host members
-              if (updated.queue.length !== prev.queue.length || 
-                  updated.currentIndex !== prev.currentIndex) {
-                // Queue or index changed, update local state
-                if (updated.currentSong && updated.currentSong.id !== prev.currentSong?.id) {
-                  playSongs(updated.queue, updated.currentSong.id);
-                  setTimeout(() => seek(updated.position), 150);
-                }
-              } else if (updated.status === 'playing' && prev.status === 'waiting') {
-                if (updated.currentSong) {
-                  playSongs(updated.queue.length > 0 ? updated.queue : [updated.currentSong], updated.currentSong.id);
-                  setTimeout(() => seek(updated.position), 150);
-                }
-              } else if (updated.currentSong && updated.currentSong.id !== prev.currentSong?.id) {
-                playSongs(updated.queue.length > 0 ? updated.queue : [updated.currentSong], updated.currentSong.id);
+              // Non-host: only call playSongs when the song ID actually changes
+              // or when the room first goes from waiting → playing.
+              // Every other update (queue reorder, member join, position tick)
+              // must NOT restart the audio — that was causing the like-button stutter.
+              if ((statusStarted || songChanged) && updated.currentSong) {
+                playSongs(
+                  updated.queue.length > 0 ? updated.queue : [updated.currentSong],
+                  updated.currentSong.id,
+                );
                 setTimeout(() => seek(updated.position), 150);
-              } else if (updated.isPlaying !== prev.isPlaying) {
-                if (updated.isPlaying && !isPlayingRef.current) {
-                  togglePlay();
-                } else if (!updated.isPlaying && isPlayingRef.current) {
-                  togglePlay();
+              } else if (!songChanged) {
+                // Same song — only sync play/pause and correct position drift
+                if (updated.isPlaying !== prev.isPlaying) {
+                  if (updated.isPlaying && !isPlayingRef.current) {
+                    togglePlay();
+                  } else if (!updated.isPlaying && isPlayingRef.current) {
+                    togglePlay();
+                  }
+                } else if (Math.abs(updated.position - positionRef.current) > POSITION_DRIFT_THRESHOLD) {
+                  seek(updated.position);
                 }
-              } else if (Math.abs(updated.position - prev.position) > POSITION_DRIFT_THRESHOLD) {
-                seek(updated.position);
               }
             } else {
-              // Host: sync queue changes but don't override playback
-              if (updated.queue.length !== prev.queue.length || 
-                  updated.currentIndex !== prev.currentIndex) {
-                // Queue was modified by another member, update local state
-                if (updated.currentSong && updated.lastChangedBy !== userIdRef.current) {
-                  playSongs(updated.queue, updated.currentSong.id);
-                  setTimeout(() => seek(updated.position), 150);
-                }
+              // Host: only react when another member explicitly changed the song
+              if (songChanged && updated.currentSong && updated.lastChangedBy !== userIdRef.current) {
+                playSongs(updated.queue, updated.currentSong.id);
+                setTimeout(() => seek(updated.position), 150);
               }
             }
 
@@ -444,12 +440,16 @@ export function useRoom() {
       channelRef.current = null;
     }
 
+    // Stop audio and clear the player so the room's song doesn't keep
+    // playing in the main PlayerBar after leaving.
+    clearPlayer();
+
     if (typeof sessionStorage !== 'undefined') {
       sessionStorage.removeItem('vibify-room-id');
     }
     setRoomState(null);
     isHostRef.current = false;
-  }, [roomState, user, clearTimers, stopPositionSync]);
+  }, [roomState, user, clearTimers, stopPositionSync, clearPlayer]);
 
   const restoreRoom = useCallback(async (roomId: string): Promise<boolean> => {
     if (!user || roomState) return false;

@@ -48,6 +48,8 @@ type PlayerContextValue = {
   playNext: (song: Song) => void;
   /** Jump to a song already in the queue by its id — does NOT consume guest credits */
   jumpToQueueItem: (songId: string) => void;
+  /** Stop playback and clear the queue (used when leaving a room) */
+  clearPlayer: () => void;
 };
 
 type PlaybackContextValue = {
@@ -976,6 +978,28 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setIsPlaying(true);
   }, [clearCrossfadeState, clearRetryState]);
 
+  /** Stop playback and wipe the queue — called when the user leaves a room */
+  const clearPlayer = useCallback(() => {
+    clearCrossfadeState();
+    clearRetryState();
+    if (activeAudio) {
+      activeAudio.pause();
+      activeAudio.src = '';
+    }
+    if (nextAudio) {
+      nextAudio.pause();
+      nextAudio.src = '';
+    }
+    sourceQueueRef.current = [];
+    setQueue([]);
+    setIndex(0);
+    setIsPlaying(false);
+    setPosition(0);
+    setDuration(0);
+    setHasStarted(false);
+    updateMediaSession(null);
+  }, [clearCrossfadeState, clearRetryState]);
+
   /* ---------------- auto-queue refill ---------------- */
 
   const isFetchingMoreRef = useRef(false);
@@ -1009,12 +1033,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       queue, index, current, isPlaying, volume, muted,
       repeat, shuffle, hasStarted,
       playSongs, togglePlay, next, prev, seek, setVolume, toggleMute,
-      cycleRepeat, toggleShuffle, playNext, jumpToQueueItem,
+      cycleRepeat, toggleShuffle, playNext, jumpToQueueItem, clearPlayer,
     }),
     [
       queue, index, current, isPlaying, volume, muted,
       repeat, shuffle, hasStarted, playSongs, togglePlay, next, prev, seek,
-      setVolume, toggleMute, cycleRepeat, toggleShuffle, playNext, jumpToQueueItem,
+      setVolume, toggleMute, cycleRepeat, toggleShuffle, playNext, jumpToQueueItem, clearPlayer,
     ],
   );
 

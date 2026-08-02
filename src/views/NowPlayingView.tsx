@@ -562,7 +562,7 @@ export function NowPlayingView() {
            <p className="text-[10px] font-semibold uppercase tracking-wider text-white/50 sm:text-[11px]">
              Playing from album
            </p>
-           <p className="break-words text-xs font-semibold leading-tight text-white sm:text-sm">{current.album}</p>
+           <p className="line-clamp-1 text-xs font-semibold leading-tight text-white sm:text-sm">{current.album}</p>
          </div>
 
         <div className="flex items-center gap-1">
@@ -644,10 +644,10 @@ export function NowPlayingView() {
           transition-all duration-300 sm:max-w-[340px] lg:max-w-[380px]
           ${lyricsOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
            <div className="min-w-0">
-             <h1 className="break-words font-display text-xl font-bold leading-tight text-white sm:text-2xl">
+             <h1 className="line-clamp-2 break-words font-display text-xl font-bold leading-tight text-white sm:text-2xl">
                {current.title}
              </h1>
-             <p className="mt-0.5 break-words text-sm leading-snug text-white/60">{current.artist}</p>
+             <p className="mt-0.5 line-clamp-1 break-words text-sm leading-snug text-white/60">{current.artist}</p>
            </div>
           <button
             onClick={() => current && toggleLike(current)}

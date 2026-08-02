@@ -1,7 +1,6 @@
 import { useRef, useState } from 'react';
 import { ArrowLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { signInWithGoogle, signInWithPhone, verifyOtp } from '../auth';
-import { PWAInstallBanner } from '../components/PWAInstallBanner';
 import { TermsModal, PrivacyModal } from '../components/LegalModal';
 import { VibifyLogo } from '../components/VibifyLogo';
 
@@ -364,9 +363,6 @@ export function LoginView({ onLogin }: LoginViewProps) {
 
         </div>
       </div>
-
-      {/* PWA install banner is shown on the login screen too */}
-      <PWAInstallBanner standalone />
 
       {/* Legal modals */}
       {showTerms && <TermsModal onClose={() => setShowTerms(false)} />}

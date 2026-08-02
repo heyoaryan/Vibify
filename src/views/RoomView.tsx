@@ -445,7 +445,7 @@ export const RoomView = function RoomView() {
             <h2 className="font-display text-base font-bold text-ink-50">Add Songs</h2>
             <div className="flex items-center gap-2 text-xs text-ink-500">
               <div className={`h-1.5 w-1.5 rounded-full ${roomState.isPlaying ? 'animate-pulse bg-brand-400' : 'bg-ink-600'}`} />
-              {song?.title ?? 'Nothing playing'}
+              <span className="line-clamp-1 min-w-0">{song?.title ?? 'Nothing playing'}</span>
             </div>
           </div>
           <SearchPanel />
