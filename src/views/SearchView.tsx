@@ -72,22 +72,22 @@ function deduplicateSongs(songs: Song[]): Song[] {
 }
 
 const GENRES = [
-  { label: 'Bollywood',    query: 'bollywood hits',          hue: 340, icon: '🎬' },
-  { label: 'English Pop',  query: 'english pop hits',        hue: 240, icon: '🎵' },
-  { label: 'Punjabi',      query: 'punjabi hits',            hue: 30,  icon: '🥁' },
-  { label: 'K-Pop',        query: 'kpop hits',               hue: 320, icon: '✨' },
-  { label: 'Lo-fi',        query: 'lofi hindi',              hue: 200, icon: '🌙' },
-  { label: 'Romantic',     query: 'romantic hindi songs',    hue: 0,   icon: '💕' },
-  { label: 'Party',        query: 'party songs hindi',       hue: 260, icon: '🎉' },
-  { label: 'Hip-Hop',      query: 'hindi hip hop rap',       hue: 280, icon: '🎤' },
-  { label: 'Sad Songs',    query: 'sad hindi songs',         hue: 230, icon: '💔' },
-  { label: 'Sufi',         query: 'sufi songs hindi',        hue: 150, icon: '🕊️' },
-  { label: 'Workout',      query: 'workout gym songs hindi', hue: 90,  icon: '💪' },
-  { label: 'Chill',        query: 'chill vibes hindi',       hue: 175, icon: '😌' },
-  { label: 'Retro',        query: 'old hindi songs retro',   hue: 170, icon: '📻' },
-  { label: 'Rock',         query: 'rock songs',              hue: 120, icon: '🎸' },
-  { label: 'Arijit Singh', query: 'arijit singh',            hue: 210, icon: '🎙️' },
-  { label: 'Taylor Swift', query: 'taylor swift songs',      hue: 130, icon: '🌟' },
+  { label: 'Bollywood',    query: 'bollywood hits',               hue: 340, icon: '🎬' },
+  { label: 'English Pop',  query: 'taylor swift ed sheeran pop',  hue: 240, icon: '🎵' },
+  { label: 'K-Pop',        query: 'bts blackpink kpop',           hue: 320, icon: '✨' },
+  { label: 'Punjabi',      query: 'punjabi hits diljit',          hue: 30,  icon: '🥁' },
+  { label: 'Lo-fi',        query: 'lofi chill beats',             hue: 200, icon: '🌙' },
+  { label: 'Romantic',     query: 'romantic hindi songs',         hue: 0,   icon: '💕' },
+  { label: 'Party',        query: 'party songs bollywood',        hue: 260, icon: '🎉' },
+  { label: 'Hip-Hop',      query: 'hip hop rap english',          hue: 280, icon: '🎤' },
+  { label: 'Sad Songs',    query: 'sad hindi songs',              hue: 230, icon: '💔' },
+  { label: 'Sufi',         query: 'sufi songs qawwali',           hue: 150, icon: '🕊️' },
+  { label: 'Workout',      query: 'workout gym motivation songs',  hue: 90,  icon: '💪' },
+  { label: 'Chill',        query: 'chill vibes acoustic',         hue: 175, icon: '😌' },
+  { label: 'Retro',        query: 'old hindi songs retro',        hue: 170, icon: '📻' },
+  { label: 'Rock',         query: 'rock songs linkin park',       hue: 120, icon: '🎸' },
+  { label: 'Arijit Singh', query: 'arijit singh',                 hue: 210, icon: '🎙️' },
+  { label: 'Taylor Swift', query: 'taylor swift',                 hue: 130, icon: '🌟' },
 ];
 
 // ─── Module-level search cache ────────────────────────────────────────────────
@@ -268,9 +268,13 @@ export const SearchView = memo(function SearchView() {
   useEffect(() => {
     if (_searchCache.has('__browse__')) return;
     setBrowseLoading(true);
-    searchSongs('trending hindi songs 2024', 10)
-      .then(songs => {
-        const deduped = deduplicateSongs(songs);
+    Promise.all([
+      searchSongs('trending hindi songs 2025', 8),
+      searchSongs('trending english songs 2025', 8),
+      searchSongs('kpop bts blackpink', 6),
+    ])
+      .then(([hindi, english, kpop]) => {
+        const deduped = deduplicateSongs([...hindi, ...english, ...kpop]);
         _searchCache.set('__browse__', deduped);
         setBrowseAll(deduped);
       })

@@ -86,30 +86,36 @@ export const HomeView = memo(function HomeView() {
 
     const delay = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
     Promise.all([
-      // Quick picks - diverse new songs from different search queries
+      // Quick picks — Hindi + English + global mix
       Promise.all([
-        searchSongs('new hindi songs 2025', 5),
-        searchSongs('latest punjabi songs', 5),
-        searchSongs('trending tamil songs', 5),
+        searchSongs('new hindi songs 2025', 4),
+        searchSongs('latest english pop hits 2025', 4),
+        searchSongs('trending punjabi songs', 4),
       ]).then(results => dedupe(results.flat())),
-      
-      // Trending now - diverse trending from multiple genres
+
+      // Trending now — Hindi + English + K-Pop
       Promise.all([
-        getTrendingSongs(10),
-        searchSongs('viral bollywood songs', 8),
-        searchSongs('trending pop hindi', 7),
+        getTrendingSongs(8),
+        searchSongs('trending english songs 2025', 8),
+        searchSongs('kpop bts blackpink 2025', 6),
+        searchSongs('viral bollywood songs', 6),
       ]).then(results => dedupe(results.flat())),
-      
-      delay(250).then(() => getNewReleases(20)),
-      delay(500).then(() => getArtistSongs('arijit singh', 8)),
-      
-      // Made for you - continuous playback with more songs
-      delay(750).then(() => Promise.all([
-        searchSongs('chill hindi lofi', 15),
-        searchSongs('romantic hindi songs', 15),
-        searchSongs('upbeat bollywood', 15),
+
+      delay(250).then(() => Promise.all([
+        getNewReleases(10),
+        searchSongs('new english songs 2025', 10),
       ]).then(results => dedupe(results.flat()))),
-      
+
+      delay(500).then(() => getArtistSongs('arijit singh', 8)),
+
+      // Made for you — Hindi + English + global
+      delay(750).then(() => Promise.all([
+        searchSongs('chill hindi lofi', 10),
+        searchSongs('romantic hindi songs', 10),
+        searchSongs('english chill pop songs', 10),
+        searchSongs('upbeat bollywood', 8),
+      ]).then(results => dedupe(results.flat()))),
+
       delay(900).then(() => getRecommendations(12)),
     ]).then(([quickPicksRaw, trendingRaw, releasesRaw, arijitRaw, madeForYouRaw, forYouRaw]) => {
       const used = new Set<string>();
