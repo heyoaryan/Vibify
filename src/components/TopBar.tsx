@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNav } from '../nav';
 import { UserAvatar } from './UserAvatar';
 import { InstallButton } from './InstallButton';
+import { VibifyLogo } from './VibifyLogo';
 
 export function TopBar() {
   const { canGoBack, back, view, navigate } = useNav();
@@ -52,7 +53,15 @@ export function TopBar() {
         <ArrowLeft size={17} />
       </button>
 
-      {/* Centre title — absolutely centred regardless of side controls */}
+      {/* Logo + name — mobile/tablet only (left side) */}
+      <div className="flex items-center gap-2 lg:hidden">
+        <VibifyLogo size={30} className="shrink-0" />
+        <span className="font-display text-base font-bold tracking-tight text-ink-50 sm:text-lg">
+          Vibify
+        </span>
+      </div>
+
+      {/* Centre title — absolutely centred on all screen sizes */}
       <h1 className="pointer-events-none absolute left-1/2 -translate-x-1/2 text-center font-display text-lg font-bold text-ink-50 sm:text-xl lg:text-2xl">
         {title}
       </h1>

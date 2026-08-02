@@ -319,33 +319,8 @@ export const SearchView = memo(function SearchView() {
     const Ctor = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!Ctor) { setVoiceSupported(false); return; }
     setVoiceSupported(true);
-    const rec = new Ctor();
-    rec.continuous = false;
-    rec.interimResults = true;
-    rec.lang = 'en-IN';
-    rec.onresult = (event: { results: ArrayLike<ArrayLike<{ transcript: string; confidence: number }> & { isFinal: boolean }> }) => {
-      let interim = '', final = '';
-      for (let i = event.results.length - 1; i >= 0; i--) {
-        const t = event.results[i][0]?.transcript ?? '';
-        if (event.results[i].isFinal) final = t; else interim = t;
-      }
-      setInterimTranscript(interim);
-      if (final) {
-        setVoiceError(null);
-        setQuery(final);
-        // Auto-close mic as soon as a final transcript is received
-        rec.stop();
-        setVoiceListening(false);
-        setInterimTranscript('');
-      }
-    };
-    rec.onerror = (ev: { error: string }) => {
-      setVoiceListening(false);
-      setInterimTranscript('');
-      setVoiceError(ev.error === 'not-allowed' ? 'Microphone access was denied.' : 'Voice search could not be completed.');
-    };
-    rec.onend = () => { setVoiceListening(false); setInterimTranscript(''); };
-    recognitionRef.current = rec;
+    // Store the constructor so we can create a fresh instance each time
+    recognitionRef.current = null;
     return () => { recognitionRef.current?.stop(); recognitionRef.current = null; };
   }, []);
 
@@ -487,15 +462,81 @@ export const SearchView = memo(function SearchView() {
   }, [current, togglePlay, playSongs, results]);
 
   const toggleVoiceSearch = useCallback(() => {
-    const rec = recognitionRef.current;
-    if (!rec) { setVoiceError('Voice search is not supported in this browser.'); return; }
     if (voiceListening) {
-      rec.stop(); setVoiceListening(false); setInterimTranscript(''); return;
+      // Stop whatever is currently listening
+      try { recognitionRef.current?.stop(); } catch { /* ignore */ }
+      recognitionRef.current = null;
+      setVoiceListening(false);
+      setInterimTranscript('');
+      return;
     }
-    setVoiceError(null); setInterimTranscript(''); setVoiceListening(true);
+
+    const Ctor = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!Ctor) {
+      setVoiceError('Voice search is not supported in this browser.');
+      return;
+    }
+
+    // Always create a fresh instance to avoid InvalidStateError on reuse
+    const rec = new Ctor();
+    rec.continuous = false;
+    rec.interimResults = true;
+    rec.lang = 'en-IN';
+
+    rec.onresult = (event: { results: ArrayLike<ArrayLike<{ transcript: string; confidence: number }> & { isFinal: boolean }> }) => {
+      let interim = '', final = '';
+      for (let i = event.results.length - 1; i >= 0; i--) {
+        const t = event.results[i][0]?.transcript ?? '';
+        if (event.results[i].isFinal) final = t; else interim = t;
+      }
+      setInterimTranscript(interim);
+      if (final) {
+        setVoiceError(null);
+        setQuery(final);
+        try { rec.stop(); } catch { /* ignore */ }
+        recognitionRef.current = null;
+        setVoiceListening(false);
+        setInterimTranscript('');
+      }
+    };
+
+    rec.onerror = (ev: { error: string }) => {
+      recognitionRef.current = null;
+      setVoiceListening(false);
+      setInterimTranscript('');
+      if (ev.error === 'not-allowed' || ev.error === 'permission-denied') {
+        setVoiceError('Microphone access was denied. Please allow microphone permission and try again.');
+      } else if (ev.error === 'no-speech') {
+        setVoiceError('No speech detected. Please try again.');
+      } else if (ev.error === 'network') {
+        setVoiceError('Network error. Please check your connection and try again.');
+      } else {
+        setVoiceError('Voice search could not be completed. Please try again.');
+      }
+    };
+
+    rec.onend = () => {
+      // Only clear listening state if this instance is still the active one
+      if (recognitionRef.current === rec) {
+        recognitionRef.current = null;
+        setVoiceListening(false);
+        setInterimTranscript('');
+      }
+    };
+
+    recognitionRef.current = rec;
+    setVoiceError(null);
+    setInterimTranscript('');
+    setVoiceListening(true);
     if (current && isPlaying) togglePlay();
-    try { rec.start(); }
-    catch { setVoiceListening(false); setVoiceError('Voice search could not be started.'); }
+
+    try {
+      rec.start();
+    } catch {
+      recognitionRef.current = null;
+      setVoiceListening(false);
+      setVoiceError('Voice search could not be started. Please try again.');
+    }
   }, [voiceListening, current, isPlaying, togglePlay]);
 
   const playGenre = useCallback(async (g: typeof GENRES[0]) => {
@@ -601,7 +642,19 @@ export const SearchView = memo(function SearchView() {
         )}
       </div>
 
-      {voiceError && <p className="text-sm text-red-400">{voiceError}</p>}
+      {voiceError && (
+        <div className="flex items-start gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3">
+          <MicOff size={15} className="mt-0.5 shrink-0 text-red-400" />
+          <p className="flex-1 text-sm text-red-300">{voiceError}</p>
+          <button
+            onClick={() => setVoiceError(null)}
+            aria-label="Dismiss error"
+            className="shrink-0 rounded-full p-0.5 text-red-400 transition-colors hover:text-red-200"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
 
       {/* ── Voice listening modal ── */}
       {voiceListening && (
@@ -631,7 +684,6 @@ export const SearchView = memo(function SearchView() {
               Stop Listening
             </button>
           </div>
-          <style>{`@keyframes wave-motion{0%,100%{transform:scaleY(.8);opacity:.5}50%{transform:scaleY(1.2);opacity:1}}`}</style>
         </div>
       )}
 

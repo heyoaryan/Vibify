@@ -19,6 +19,9 @@ export const PlayerBar = memo(function PlayerBar() {
   const songLiked = current ? isLiked(current.id) : false;
   const repeatActive = repeat !== 'off';
 
+  // Hide the bar entirely when nothing has been queued/played yet
+  if (!current) return null;
+
   return (
     <div className="relative z-30 px-2 pb-1 pt-0 sm:px-3 sm:pb-2 lg:px-4 lg:pb-3">
       {/* Ambient glow */}
@@ -37,54 +40,44 @@ export const PlayerBar = memo(function PlayerBar() {
 
         {/* Left: artwork + info */}
         <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
-          {current ? (
-            <>
-              {/* Artwork tap — 44×44 min touch target */}
-              <button
-                onClick={() => navigate({ name: 'nowplaying' })}
-                aria-label="Open now playing"
-                className="group relative shrink-0 min-h-[44px] min-w-[44px] flex items-center justify-center"
-              >
-                <Artwork
-                  title={current.title}
-                  hue={current.hue}
-                  hue2={current.hue2}
-                  imageUrl={current.imageUrl}
-                  className="h-10 w-10 sm:h-11 sm:w-11 lg:h-12 lg:w-12"
-                  rounded="rounded-lg"
-                />
-                <div className="absolute inset-0 grid place-items-center rounded-lg bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
-                  <Maximize2 size={12} className="text-white" />
-                </div>
-              </button>
-              <button
-                onClick={() => navigate({ name: 'nowplaying' })}
-                aria-label="Open now playing"
-                className="min-w-0 flex-1 text-left"
-              >
-                <p className="line-clamp-2 text-xs font-semibold leading-snug text-ink-50 sm:text-sm">
-                  {current.title}
-                </p>
-                <p className="mt-0.5 line-clamp-1 break-words text-[10px] leading-tight text-ink-300 sm:text-xs">{current.artist}</p>
-              </button>
-              <button
-                onClick={() => current && toggleLike(current)}
-                aria-label={songLiked ? 'Unlike' : 'Like'}
-                className={`ml-1 hidden shrink-0 rounded-full p-1.5 transition-colors md:block
-                  ${songLiked ? 'text-accent-400' : 'text-ink-300 hover:text-ink-50'}`}
-              >
-                <Heart size={15} className={songLiked ? 'fill-accent-400' : ''} />
-              </button>
-            </>
-          ) : (
-            <div className="flex items-center gap-2 text-ink-300 sm:gap-3">
-              <div className="h-10 w-10 shrink-0 rounded-lg bg-ink-800 sm:h-11 sm:w-11" />
-              <div>
-                <p className="text-xs font-medium text-ink-200 sm:text-sm">Nothing playing</p>
-                <p className="text-[10px] sm:text-xs">Pick a song</p>
+          <>
+            {/* Artwork tap — 44×44 min touch target */}
+            <button
+              onClick={() => navigate({ name: 'nowplaying' })}
+              aria-label="Open now playing"
+              className="group relative shrink-0 min-h-[44px] min-w-[44px] flex items-center justify-center"
+            >
+              <Artwork
+                title={current.title}
+                hue={current.hue}
+                hue2={current.hue2}
+                imageUrl={current.imageUrl}
+                className="h-10 w-10 sm:h-11 sm:w-11 lg:h-12 lg:w-12"
+                rounded="rounded-lg"
+              />
+              <div className="absolute inset-0 grid place-items-center rounded-lg bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
+                <Maximize2 size={12} className="text-white" />
               </div>
-            </div>
-          )}
+            </button>
+            <button
+              onClick={() => navigate({ name: 'nowplaying' })}
+              aria-label="Open now playing"
+              className="min-w-0 flex-1 text-left"
+            >
+              <p className="line-clamp-2 text-xs font-semibold leading-snug text-ink-50 sm:text-sm">
+                {current.title}
+              </p>
+              <p className="mt-0.5 line-clamp-1 break-words text-[10px] leading-tight text-ink-300 sm:text-xs">{current.artist}</p>
+            </button>
+            <button
+              onClick={() => current && toggleLike(current)}
+              aria-label={songLiked ? 'Unlike' : 'Like'}
+              className={`ml-1 hidden shrink-0 rounded-full p-1.5 transition-colors md:block
+                ${songLiked ? 'text-accent-400' : 'text-ink-300 hover:text-ink-50'}`}
+            >
+              <Heart size={15} className={songLiked ? 'fill-accent-400' : ''} />
+            </button>
+          </>
         </div>
 
         {/* Center: transport controls */}

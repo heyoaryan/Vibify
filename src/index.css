@@ -77,16 +77,9 @@ button, input, textarea, select { font: inherit; }
   -webkit-overflow-scrolling: touch;
 }
 
-/* Thin scrollbar on desktop — hidden on touch screens */
-@media (hover: hover) and (pointer: fine) {
-  * { scrollbar-width: thin; scrollbar-color: #2a3d4a transparent; }
-  *::-webkit-scrollbar { width: 6px; height: 6px; }
-  *::-webkit-scrollbar-track { background: transparent; }
-  *::-webkit-scrollbar-thumb {
-    background: #21333f; border-radius: 99px;
-  }
-  *::-webkit-scrollbar-thumb:hover { background: #3a4f5c; }
-}
+/* Hide scrollbar on all screens */
+* { scrollbar-width: none; }
+*::-webkit-scrollbar { display: none; }
 
 /* ── Glass utilities ─────────────────────────────────────────────────────── */
 @layer components {
@@ -247,4 +240,10 @@ canvas {
     left: 0;
     overflow: hidden;
   }
+}
+
+/* ── Voice search waveform animation ────────────────────────────────────── */
+@keyframes wave-motion {
+  0%, 100% { transform: scaleY(0.8); opacity: 0.5; }
+  50%       { transform: scaleY(1.2); opacity: 1;   }
 }
