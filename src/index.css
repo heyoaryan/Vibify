@@ -214,33 +214,7 @@ canvas {
 .swipe-enter-right{ animation: swipeEnterFromRight 0.32s cubic-bezier(0.22,1,0.36,1) both; }
 .swipe-enter-left { animation: swipeEnterFromLeft  0.32s cubic-bezier(0.22,1,0.36,1) both; }
 
-/* ── Force portrait on mobile — CSS counter-rotation ────────────────────── */
-/* screen.orientation.lock() only works in PWA/standalone mode.             */
-/* For regular browser tabs on small screens we counter-rotate #root by 90° */
-/* and swap width/height so the app always renders as if in portrait.       */
-/* max-width: 1024px keeps this away from tablets/desktops in landscape.    */
-@media screen and (orientation: landscape) and (max-width: 1024px) {
-  html, body {
-    overflow: hidden;
-    /* Fill the landscape viewport (width > height here) */
-    width: 100lvw;
-    height: 100lvh;
-  }
 
-  #root {
-    /* Rotate the whole app back to portrait */
-    transform: rotate(-90deg);
-    transform-origin: left top;
-    /* After rotation: visual width = landscape height, visual height = landscape width */
-    width: 100lvh;
-    height: 100lvw;
-    /* Shift into view — rotating from left-top moves the element off-screen */
-    position: fixed;
-    top: 100lvw;
-    left: 0;
-    overflow: hidden;
-  }
-}
 
 /* ── Voice search waveform animation ────────────────────────────────────── */
 @keyframes wave-motion {
