@@ -330,10 +330,18 @@ export const SearchView = memo(function SearchView() {
         if (event.results[i].isFinal) final = t; else interim = t;
       }
       setInterimTranscript(interim);
-      if (final) { setVoiceError(null); setQuery(final); }
+      if (final) {
+        setVoiceError(null);
+        setQuery(final);
+        // Auto-close mic as soon as a final transcript is received
+        rec.stop();
+        setVoiceListening(false);
+        setInterimTranscript('');
+      }
     };
     rec.onerror = (ev: { error: string }) => {
       setVoiceListening(false);
+      setInterimTranscript('');
       setVoiceError(ev.error === 'not-allowed' ? 'Microphone access was denied.' : 'Voice search could not be completed.');
     };
     rec.onend = () => { setVoiceListening(false); setInterimTranscript(''); };
@@ -598,11 +606,11 @@ export const SearchView = memo(function SearchView() {
       {/* ── Voice listening modal ── */}
       {voiceListening && (
         <div onClick={toggleVoiceSearch}
-          className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-black/80 backdrop-blur-sm">
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
           <div onClick={e => e.stopPropagation()}
-            className="flex w-[92%] max-w-xs sm:max-w-sm flex-col items-center gap-6 rounded-3xl
+            className="flex w-[88%] max-w-sm flex-col items-center gap-6 rounded-3xl
               border border-brand-400/20 bg-gradient-to-b from-brand-500/10 to-ink-900/50
-              p-5 sm:p-8 shadow-2xl max-h-[80vh] overflow-auto mt-24 sm:mt-0">
+              p-6 sm:p-8 shadow-2xl">
             <div className="flex items-end justify-center gap-1 h-16">
               {Array.from({ length: 12 }).map((_, i) => (
                 <div key={i} className="w-1 rounded-full bg-gradient-to-t from-brand-400 to-brand-300"
