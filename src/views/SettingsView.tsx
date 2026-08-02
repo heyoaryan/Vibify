@@ -250,7 +250,7 @@ export const SettingsView = memo(function SettingsView() {
             <VibifyLogo size={72} className="drop-shadow-[0_0_20px_rgba(10,168,149,0.5)]" />
             <div>
               <p className="font-display text-xl font-bold text-ink-50">Vibify</p>
-              <p className="mt-0.5 text-xs text-ink-400">Version 1.0.0</p>
+              <p className="mt-0.5 text-xs text-ink-400">Version 2.1.1</p>
             </div>
           </div>
 
