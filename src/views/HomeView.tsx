@@ -1,5 +1,5 @@
 import { Clock, Flame, Play, Sparkles, Wand2 } from 'lucide-react';
-import { memo, useEffect, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { useRecentlyPlayed } from '../history';
 
 import { usePlayer } from '../player';
@@ -156,7 +156,7 @@ export const HomeView = memo(function HomeView() {
   }, []);
 
   // Derive recently-played songs directly from play history — no separate state needed.
-  const recentSongs: Song[] = historyPlays.map((it) => ({
+  const recentSongs: Song[] = useMemo(() => historyPlays.map((it) => ({
     id: it.songId,
     title: it.title,
     artist: it.artist,
@@ -168,9 +168,9 @@ export const HomeView = memo(function HomeView() {
     src: '',
     genre: '',
     imageUrl: it.imageUrl,
-  }));
+  })), [historyPlays]);
 
-  const play = (s: Song, list: Song[]) => {
+  const play = useCallback((s: Song, list: Song[]) => {
     if (current?.id === s.id) { togglePlay(); return; }
     // Songs from recently-played history have no src — fetch fresh details first
     if (!s.src) {
@@ -190,12 +190,13 @@ export const HomeView = memo(function HomeView() {
       return;
     }
     playSongs(list, s.id);
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current?.id, togglePlay, playSongs]);
 
-  const playMood = async (mood: typeof MOODS[0]) => {
+  const playMood = useCallback(async (mood: typeof MOODS[0]) => {
     const list = await searchSongs(mood.query, 20);
     if (list.length) playSongs(list, list[0].id);
-  };
+  }, [playSongs]);
 
   return (
     <div className="animate-fade-in space-y-8 px-3 pb-12 sm:space-y-10 sm:px-5 lg:px-8">

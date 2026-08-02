@@ -3,6 +3,12 @@
  *
  * This wrapper returns direct downloadUrl[] per song — no DES decryption,
  * no geo-restriction issues, works identically in dev and production.
+ *
+ * Perf additions:
+ * - In-flight deduplication: identical concurrent calls share one Promise.
+ *   HomeView fires 10+ parallel searchSongs() calls on mount — without this,
+ *   each hits the API independently. With it, 10 identical calls = 1 request.
+ * - AbortController support: callers can cancel stale requests.
  */
 
 import type { Song } from './types';
@@ -36,6 +42,19 @@ type SongResponse = {
   success: boolean;
   data: ApiSong[];
 };
+
+// ─── In-flight deduplication ──────────────────────────────────────────────────
+// Key → pending Promise. If two callers ask for the same query at the same
+// time, they both wait on the same network request instead of firing two.
+const _inFlight = new Map<string, Promise<Song[]>>();
+
+function withDedup(key: string, fn: () => Promise<Song[]>): Promise<Song[]> {
+  const existing = _inFlight.get(key);
+  if (existing) return existing;
+  const p = fn().finally(() => _inFlight.delete(key));
+  _inFlight.set(key, p);
+  return p;
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -134,18 +153,23 @@ function dedupSongs(songs: Song[]): Song[] {
 
 // ─── Core fetch functions ────────────────────────────────────────────────────
 
-/** Search songs from JioSaavn via the public API wrapper */
-async function searchSaavnSongs(query: string, limit = 20): Promise<Song[]> {
+/**
+ * Search songs from JioSaavn via the public API wrapper.
+ * Supports an optional AbortSignal so callers can cancel stale requests.
+ */
+async function searchSaavnSongs(query: string, limit = 20, signal?: AbortSignal): Promise<Song[]> {
   try {
     const url = `${API_BASE}/search/songs?query=${encodeURIComponent(query)}&page=1&limit=${limit}`;
-    const res = await fetch(url, { headers: { Accept: 'application/json' } });
+    const res = await fetch(url, { headers: { Accept: 'application/json' }, signal });
     if (!res.ok) return [];
     const json: SearchResponse = await res.json();
     if (!json.success) return [];
     return json.data.results
       .map(s => mapSong(s))
       .filter((s): s is Song => s !== null && !!s.src);
-  } catch {
+  } catch (err) {
+    // Swallow AbortError — it's intentional
+    if (err instanceof DOMException && err.name === 'AbortError') return [];
     return [];
   }
 }
@@ -166,41 +190,58 @@ async function fetchSongById(id: string): Promise<Song | null> {
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 
-/** Search songs — JioSaavn + Jamendo in parallel */
-export async function searchSongs(query: string, limit = 20): Promise<Song[]> {
-  if (!query.trim()) return [];
-  const [saavn, jamendo] = await Promise.all([
-    searchSaavnSongs(query, limit),
-    searchJamendo(query, limit),
-  ]);
-  return dedupSongs([...saavn, ...jamendo]);
+/**
+ * Search songs — JioSaavn + Jamendo in parallel.
+ * Identical concurrent calls are deduplicated to a single in-flight request.
+ * Pass an AbortSignal to cancel on unmount / stale query.
+ */
+export function searchSongs(query: string, limit = 20, signal?: AbortSignal): Promise<Song[]> {
+  if (!query.trim()) return Promise.resolve([]);
+  // Dedup key includes limit so different page sizes get separate requests
+  const key = `search:${query.trim().toLowerCase()}:${limit}`;
+  return withDedup(key, async () => {
+    const [saavn, jamendo] = await Promise.all([
+      searchSaavnSongs(query, limit, signal),
+      searchJamendo(query, limit),
+    ]);
+    return dedupSongs([...saavn, ...jamendo]);
+  });
 }
 
-/** Trending songs */
-export async function getTrendingSongs(limit = 20): Promise<Song[]> {
-  const [saavn, jamendo] = await Promise.all([
-    searchSaavnSongs('trending hindi songs 2025', limit),
-    getTrendingJamendo(limit),
-  ]);
-  return dedupSongs([...saavn, ...jamendo]);
+/** Trending songs — deduplicated across concurrent callers */
+export function getTrendingSongs(limit = 20): Promise<Song[]> {
+  const key = `trending:${limit}`;
+  return withDedup(key, async () => {
+    const [saavn, jamendo] = await Promise.all([
+      searchSaavnSongs('trending hindi songs 2025', limit),
+      getTrendingJamendo(limit),
+    ]);
+    return dedupSongs([...saavn, ...jamendo]);
+  });
 }
 
-/** New releases */
-export async function getNewReleases(limit = 20): Promise<Song[]> {
-  const [saavn, jamendo] = await Promise.all([
-    searchSaavnSongs('new hindi songs 2025', limit),
-    searchJamendo('new releases 2025', limit),
-  ]);
-  return dedupSongs([...saavn, ...jamendo]);
+/** New releases — deduplicated */
+export function getNewReleases(limit = 20): Promise<Song[]> {
+  const key = `releases:${limit}`;
+  return withDedup(key, async () => {
+    const [saavn, jamendo] = await Promise.all([
+      searchSaavnSongs('new hindi songs 2025', limit),
+      searchJamendo('new releases 2025', limit),
+    ]);
+    return dedupSongs([...saavn, ...jamendo]);
+  });
 }
 
-/** Top songs by artist */
-export async function getArtistSongs(artistName: string, limit = 10): Promise<Song[]> {
-  const [saavn, jamendo] = await Promise.all([
-    searchSaavnSongs(artistName, limit),
-    searchJamendo(artistName, limit),
-  ]);
-  return dedupSongs([...saavn, ...jamendo]);
+/** Top songs by artist — deduplicated */
+export function getArtistSongs(artistName: string, limit = 10): Promise<Song[]> {
+  const key = `artist:${artistName.toLowerCase()}:${limit}`;
+  return withDedup(key, async () => {
+    const [saavn, jamendo] = await Promise.all([
+      searchSaavnSongs(artistName, limit),
+      searchJamendo(artistName, limit),
+    ]);
+    return dedupSongs([...saavn, ...jamendo]);
+  });
 }
 
 /** Single song by JioSaavn song ID */

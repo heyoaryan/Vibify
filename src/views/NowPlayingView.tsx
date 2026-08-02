@@ -582,7 +582,7 @@ export function NowPlayingView() {
       <div className="absolute inset-0 backdrop-blur-md" />
       <div className="absolute inset-0 bg-black/65" />
 
-      {/* ── Full-screen shimmer ── */}
+      {/* ── Full-screen shimmer — paused when not playing to save GPU ── */}
       <div aria-hidden className="absolute inset-0 z-[1] overflow-hidden pointer-events-none">
         <div style={{
           position:   'absolute',
@@ -590,6 +590,7 @@ export function NowPlayingView() {
           left: '-80%', right: '-80%',
           background: 'linear-gradient(105deg, transparent 30%, rgba(255,255,255,0.08) 50%, transparent 70%)',
           animation:  'npShineR2L 4.5s ease-in-out infinite',
+          animationPlayState: isPlaying ? 'running' : 'paused',
         }} />
         <div style={{
           position:   'absolute',
@@ -597,6 +598,7 @@ export function NowPlayingView() {
           left: '-80%', right: '-80%',
           background: 'linear-gradient(75deg, transparent 30%, rgba(255,255,255,0.055) 50%, transparent 70%)',
           animation:  'npShineL2R 6s 2.25s ease-in-out infinite',
+          animationPlayState: isPlaying ? 'running' : 'paused',
         }} />
       </div>
 

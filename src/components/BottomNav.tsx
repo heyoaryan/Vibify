@@ -1,4 +1,5 @@
 import { Home, Library, Search, Users } from 'lucide-react';
+import { memo } from 'react';
 import { useNav } from '../nav';
 import type { NavSection } from '../types';
 
@@ -9,7 +10,7 @@ const navItems: { id: NavSection; label: string; icon: typeof Home }[] = [
   { id: 'library', label: 'Library', icon: Library },
 ];
 
-export function BottomNav() {
+export const BottomNav = memo(function BottomNav() {
   const { view, navigate } = useNav();
 
   const activeSection: NavSection =
@@ -75,4 +76,4 @@ export function BottomNav() {
       })}
     </nav>
   );
-}
+});

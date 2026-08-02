@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { gradientStyle } from '../lib';
 
 type ArtworkProps = {
@@ -13,12 +13,15 @@ type ArtworkProps = {
 };
 
 /**
- * Album-style cover art.
+ * Album-style cover art — wrapped in memo so lists of songs (HomeView rails,
+ * SearchView rows, Queue drawer) don't re-render every Artwork when an
+ * unrelated parent state changes (e.g. isPlaying toggling in the player bar).
+ *
  * When `imageUrl` is provided, shows the real album photo.
  * Falls back to layered gradients and geometric shapes when not available.
  * `vinyl` variant adds a center label hole for the spinning record look.
  */
-export function Artwork({
+export const Artwork = memo(function Artwork({
   title,
   hue,
   hue2,
@@ -140,4 +143,4 @@ export function Artwork({
       )}
     </div>
   );
-}
+});

@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react';
+import { memo, useMemo, useRef } from 'react';
 import { Mic2, Loader2, Music2 } from 'lucide-react';
 import type { LyricLine } from '../lyrics';
 import type { LyricsFetchStatus } from '../lyricsApi';
@@ -47,7 +47,8 @@ function injectStyles() {
 
 // ─── ActiveLine: CSS mask-sweep glow ─────────────────────────────────────────
 // Text-bounded beam that stays strictly within text boundaries
-function ActiveLine({
+// memo'd: only re-renders when animKey or lineDurationMs changes (i.e. new lyric line)
+const ActiveLine = memo(function ActiveLine({
   text, animKey, lineDurationMs,
 }: {
   text: string; animKey: number; lineDurationMs: number;
@@ -109,10 +110,10 @@ function ActiveLine({
       </div>
     </div>
   );
-}
+});
 
 // ─── Tune symbol row ──────────────────────────────────────────────────────────
-function TuneRow({ isActive }: { isActive: boolean }) {
+const TuneRow = memo(function TuneRow({ isActive }: { isActive: boolean }) {
   return (
     <div className="flex h-10 items-center justify-center gap-2">
       {isActive
@@ -124,10 +125,10 @@ function TuneRow({ isActive }: { isActive: boolean }) {
       }
     </div>
   );
-}
+});
 
 // ─── Loading ──────────────────────────────────────────────────────────────────
-function LoadingSkeleton() {
+const LoadingSkeleton = memo(function LoadingSkeleton() {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-5 px-8">
       <Loader2 size={22} className="text-white/25 animate-spin" />
@@ -139,10 +140,10 @@ function LoadingSkeleton() {
       </div>
     </div>
   );
-}
+});
 
 // ─── No lyrics ────────────────────────────────────────────────────────────────
-function NoLyrics({ songTitle }: { songTitle?: string }) {
+const NoLyrics = memo(function NoLyrics({ songTitle }: { songTitle?: string }) {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-4 px-10 text-center">
       <div className="grid h-14 w-14 place-items-center rounded-full bg-white/[0.06]">
@@ -154,7 +155,7 @@ function NoLyrics({ songTitle }: { songTitle?: string }) {
       </div>
     </div>
   );
-}
+});
 
 // ─── Responsive font sizes ────────────────────────────────────────────────────
 const FONT = {
@@ -167,7 +168,7 @@ const FONT = {
 const WINDOW_SIZE   = 4;   // lines visible at once
 const LINES_BEFORE  = 1;   // how many past lines to show above active
 
-export function Lyrics({ lines, position, status, onSeek, songTitle }: LyricsProps) {
+export const Lyrics = memo(function Lyrics({ lines, position, status, onSeek, songTitle }: LyricsProps) {
   injectStyles();
 
   const prevBatchRef  = useRef(-1);
@@ -306,4 +307,4 @@ export function Lyrics({ lines, position, status, onSeek, songTitle }: LyricsPro
       </div>
     </div>
   );
-}
+});
