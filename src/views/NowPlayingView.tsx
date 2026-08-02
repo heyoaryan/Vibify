@@ -3,7 +3,7 @@ import {
   Pause, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward,
   Share2, ListPlus, User, Info, X, Check, ChevronRight,
 } from 'lucide-react';
-import { useState, useEffect, memo } from 'react';
+import { useState, useEffect, useRef, memo } from 'react';
 
 // ─── Shimmer keyframes — injected once ───────────────────────────────────────
 const NP_KEYFRAMES = `
@@ -31,13 +31,13 @@ function injectNPStyles() {
 
 import { usePlayer, usePlayback } from '../player';
 import { useNav } from '../nav';
+import { useNowPlayingClose } from '../nowPlayingClose';
 import { formatTime, gradientStyle } from '../lib';
 import { useLyrics } from '../useLyrics';
 import type { Song } from '../types';
 import { Artwork } from '../components/Artwork';
 import { SeekSlider } from '../components/Sliders';
 import { Lyrics } from '../components/Lyrics';
-import { Visualizer } from '../components/Visualizer';
 import { useLikes } from '../likes';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -492,7 +492,8 @@ export function NowPlayingView() {
     repeat, shuffle, togglePlay, next, prev,
     seek, cycleRepeat, toggleShuffle, queue, index, jumpToQueueItem,
   } = usePlayer();
-  const { back } = useNav();
+  const { navigate } = useNav();
+  const closeOverlay = useNowPlayingClose();
   const { isLiked, toggle: toggleLike } = useLikes();
 
   const songLiked = isLiked(current?.id ?? '');
@@ -505,11 +506,66 @@ export function NowPlayingView() {
   //    the panel opens (fetch already completed in the background).
   const { lines: lyricsLines, status: lyricsStatus } = useLyrics();
 
+  // ── Escape key closes the overlay (desktop) ───────────────────────────────
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeOverlay();
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [closeOverlay]);
+
+  // ── Swipe gesture — left = next, right = prev ─────────────────────────────
+  // swipeDir: direction the current card exits ('left' | 'right' | null)
+  // enterDir: direction the new card enters from ('left' | 'right' | null)
+  const touchStartX = useRef<number | null>(null);
+  const touchStartY = useRef<number | null>(null);
+  const [swipeAnim, setSwipeAnim] = useState<'exit-left' | 'exit-right' | 'enter-left' | 'enter-right' | null>(null);
+  const swipeLocked = useRef(false);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX.current === null || touchStartY.current === null) return;
+    if (lyricsOpen || queueOpen || actionSheetOpen) return;
+    if (swipeLocked.current) return;
+
+    const dx = e.changedTouches[0].clientX - touchStartX.current;
+    const dy = e.changedTouches[0].clientY - touchStartY.current;
+    touchStartX.current = null;
+    touchStartY.current = null;
+
+    // Only fire if horizontal swipe dominates and is > 50px
+    if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+
+    swipeLocked.current = true;
+    const goingNext = dx < 0; // swipe left → next song
+
+    // 1. Exit current card in swipe direction
+    setSwipeAnim(goingNext ? 'exit-left' : 'exit-right');
+
+    setTimeout(() => {
+      // 2. Change song (instant — audio crossfade handles audio)
+      if (goingNext) next(); else prev();
+
+      // 3. Enter new card from opposite side
+      setSwipeAnim(goingNext ? 'enter-right' : 'enter-left');
+
+      setTimeout(() => {
+        setSwipeAnim(null);
+        swipeLocked.current = false;
+      }, 320);
+    }, 220);
+  };
+
   if (!current) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 bg-ink-950 text-center">
         <p className="font-display text-lg text-ink-100">No song selected</p>
-        <button onClick={back} className="rounded-full bg-ink-700 px-4 py-2 text-sm text-ink-50 hover:bg-ink-600">
+        <button onClick={closeOverlay} className="rounded-full bg-ink-700 px-4 py-2 text-sm text-ink-50 hover:bg-ink-600">
           Go back
         </button>
       </div>
@@ -550,7 +606,7 @@ export function NowPlayingView() {
         style={{ paddingTop: 'max(12px, env(safe-area-inset-top))' }}
       >
         <button
-          onClick={back}
+          onClick={closeOverlay}
           aria-label="Close"
           className="grid h-11 w-11 place-items-center rounded-full bg-white/10 text-white
             backdrop-blur transition-transform hover:scale-105 active:scale-95"
@@ -596,8 +652,12 @@ export function NowPlayingView() {
       </div>
 
       {/* ── Body ── */}
-      <div className="relative flex min-h-0 flex-1 flex-col items-center justify-center gap-3
-        px-4 sm:gap-4 sm:px-8 lg:px-16">
+      <div
+        className="relative flex min-h-0 flex-1 flex-col items-center justify-center gap-3
+          px-4 sm:gap-4 sm:px-8 lg:px-16"
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+      >
 
         {/* LyricsPanel subscribes to position internally — keeps body from re-rendering at 60fps */}
         {lyricsOpen && (
@@ -611,6 +671,16 @@ export function NowPlayingView() {
           </div>
         )}
 
+        {/* Swipeable card — artwork + visualizer + title */}
+        <div
+          className={[
+            'flex w-full flex-col items-center gap-3 sm:gap-4',
+            swipeAnim === 'exit-left'  ? 'swipe-exit-left'  : '',
+            swipeAnim === 'exit-right' ? 'swipe-exit-right' : '',
+            swipeAnim === 'enter-left' ? 'swipe-enter-left' : '',
+            swipeAnim === 'enter-right'? 'swipe-enter-right': '',
+          ].join(' ')}
+        >
         {/* Album art — hidden when lyrics open */}
         <div className={`relative mx-auto w-full max-w-[300px] transition-all duration-300 ease-out
           sm:max-w-[340px] lg:max-w-[380px]
@@ -632,13 +702,6 @@ export function NowPlayingView() {
           </div>
         </div>
 
-        {/* Visualizer — hidden when lyrics open */}
-        <div className={`h-7 w-full max-w-[300px] transition-all duration-500
-          sm:h-9 sm:max-w-[340px] lg:max-w-[380px]
-          ${lyricsOpen ? 'opacity-0 pointer-events-none' : 'opacity-100 scale-100'}`}>
-          <Visualizer isPlaying={isPlaying} hue={current.hue} barCount={48} className="h-full w-full" />
-        </div>
-
         {/* Title + like — hidden when lyrics open */}
         <div className={`flex w-full max-w-[300px] items-start justify-between gap-3 px-0.5
           transition-all duration-300 sm:max-w-[340px] lg:max-w-[380px]
@@ -658,6 +721,7 @@ export function NowPlayingView() {
             <Heart size={22} className={songLiked ? 'fill-accent-400' : ''} />
           </button>
         </div>
+        </div>{/* end swipeable card */}
       </div>
 
       {/* ── Transport ── */}

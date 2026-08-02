@@ -79,6 +79,18 @@ export default {
           '0%': { opacity: '0', transform: 'scale(0.96)' },
           '100%': { opacity: '1', transform: 'scale(1)' },
         },
+        // Opens from PlayerBar — starts small + at bottom, expands to full screen
+        'np-expand': {
+          '0%':   { transform: 'translateY(92%) scaleY(0.08) scaleX(0.92)', opacity: '0', borderRadius: '20px' },
+          '40%':  { opacity: '1' },
+          '100%': { transform: 'translateY(0%) scaleY(1) scaleX(1)', opacity: '1', borderRadius: '0px' },
+        },
+        // Collapses back toward PlayerBar
+        'np-collapse': {
+          '0%':   { transform: 'translateY(0%) scaleY(1) scaleX(1)', opacity: '1', borderRadius: '0px' },
+          '60%':  { opacity: '1' },
+          '100%': { transform: 'translateY(92%) scaleY(0.08) scaleX(0.92)', opacity: '0', borderRadius: '20px' },
+        },
         'spin-vinyl': {
           '100%': { transform: 'rotate(360deg)' },
         },
@@ -114,6 +126,8 @@ export default {
         'sheet-in': 'sheet-in 0.28s cubic-bezier(0.22,1,0.36,1) both',
         'slide-right': 'slide-right 0.3s cubic-bezier(0.22,1,0.36,1) both',
         'scale-in': 'scale-in 0.3s cubic-bezier(0.22,1,0.36,1) both',
+        'np-slide-up': 'np-expand 0.46s cubic-bezier(0.32,0.72,0,1) both',
+        'np-slide-down': 'np-collapse 0.38s cubic-bezier(0.32,0,0.67,0) both',
         'spin-vinyl': 'spin-vinyl 20s linear infinite',
         'bar-rise': 'bar-rise 0.9s ease-in-out infinite',
         'float-glow': 'float-glow 4s ease-in-out infinite',

@@ -2,15 +2,16 @@
  * PWAInstallBanner — bottom-of-screen install guide/card
  *
  * Handles all platforms:
- *   iOS (any browser)     → 3-step Share → Add to Home Screen guide
- *   Desktop Safari        → macOS-specific guide (File menu / Share)
- *   Firefox               → Firefox-specific "Install" steps
- *   Chrome/Edge/Android   → Native install card with icon button + buffer
- *   Installing            → Spinning icon + shimmer progress bar
- *   Installed             → "App Installed!" with Open button
+ *   iOS (any browser)          → 3-step Share → Add to Home Screen guide
+ *   Android Firefox / Opera    → 3-step ⋮ menu → Add to Home Screen guide
+ *   Desktop Safari             → macOS-specific guide (File menu / Add to Dock)
+ *   Desktop Firefox            → Firefox-specific "Install" steps
+ *   Chrome/Edge/Android        → Native install card with icon button + buffer
+ *   Installing                 → Spinning icon + shimmer progress bar
+ *   Installed                  → "App Installed!" with Open button
  */
 
-import { CheckCircle, Download, ExternalLink, Globe, Monitor, Plus, Share, Smartphone, X } from 'lucide-react';
+import { CheckCircle, Download, ExternalLink, Globe, Monitor, MoreVertical, Plus, Share, Smartphone, X } from 'lucide-react';
 import { VibifyLogo } from './VibifyLogo';
 import { usePWAInstall } from '../pwaInstall';
 
@@ -81,19 +82,68 @@ export function PWAInstallBanner({ standalone = false }: { standalone?: boolean 
     );
   }
 
-  // ── Desktop manual guide (macOS Safari / Firefox / Android Chrome fallback / unsupported) ──────────
+  // ── Android manual guide (Firefox / Opera / Samsung fallback) ────────────
+  if (state === 'android-guide') {
+    return (
+      <div role="dialog" aria-modal="false" aria-label="Install Vibify on Android" className={cardCls}>
+        <div className="animate-fade-up rounded-2xl border border-white/10 bg-ink-900/95 p-4 shadow-2xl shadow-black/60 backdrop-blur-xl">
+          <div className="mb-3 flex items-center gap-3">
+            <VibifyLogo size={40} className="shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-ink-50">Install Vibify</p>
+              <p className="flex items-center gap-1 text-xs text-ink-400">
+                <Smartphone size={11} /> Android
+              </p>
+            </div>
+            <button onClick={dismiss} aria-label="Dismiss"
+              className="grid h-7 w-7 place-items-center rounded-full bg-white/[0.07] text-ink-400 hover:bg-white/10">
+              <X size={14} />
+            </button>
+          </div>
+
+          <ol className="space-y-2.5" aria-label="Installation steps">
+            <li className="flex items-center gap-3">
+              <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand-500/20 text-[11px] font-bold text-brand-300">1</span>
+              <span className="text-xs text-ink-300">
+                Tap the{' '}
+                <MoreVertical size={12} className="mx-0.5 inline-block align-middle text-brand-300" aria-label="menu" />
+                {' '}<strong className="text-ink-100">menu</strong> (top-right of your browser)
+              </span>
+            </li>
+            <li className="flex items-center gap-3">
+              <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand-500/20 text-[11px] font-bold text-brand-300">2</span>
+              <span className="text-xs text-ink-300">
+                Tap{' '}
+                <Plus size={12} className="mx-0.5 inline-block align-middle text-brand-300" aria-label="Add" />
+                {' '}<strong className="text-ink-100">Add to Home screen</strong>
+              </span>
+            </li>
+            <li className="flex items-center gap-3">
+              <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand-500/20 text-[11px] font-bold text-brand-300">3</span>
+              <span className="text-xs text-ink-300">
+                Tap <strong className="text-ink-100">Add</strong> — Vibify is now on your Home Screen!
+              </span>
+            </li>
+          </ol>
+
+          <div className="mt-3 flex justify-center">
+            <svg width="18" height="10" viewBox="0 0 18 10" fill="none" aria-hidden="true">
+              <path d="M1 1l8 8 8-8" stroke="#34dcc2" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Desktop manual guide (macOS Safari / Desktop Firefox / unsupported) ──────────
   if (state === 'desktop-guide') {
     const ua          = navigator.userAgent;
     const isSafari    = /^((?!chrome|chromium|android).)*safari/i.test(ua);
     const isFirefox   = /firefox/i.test(ua);
-    const isAndroid   = /android/i.test(ua);
-    const isChromium  = /chrome|chromium/i.test(ua);
-    // Android Chrome whose native prompt was already dismissed → show manual steps
-    const isAndroidChrome = isAndroid && isChromium;
 
-    const deviceLabel = isAndroidChrome ? 'Android Chrome'
-      : isSafari   ? 'macOS Safari'
-      : isFirefox  ? 'Firefox'
+    const deviceLabel = isSafari  ? 'macOS Safari'
+      : isFirefox ? 'Firefox'
       : 'Your browser';
 
     return (
@@ -104,10 +154,7 @@ export function PWAInstallBanner({ standalone = false }: { standalone?: boolean 
             <div className="flex-1">
               <p className="text-sm font-semibold text-ink-50">Install Vibify</p>
               <p className="flex items-center gap-1 text-xs text-ink-400">
-                {isAndroidChrome
-                  ? <Smartphone size={11} />
-                  : <Monitor size={11} />}
-                {deviceLabel}
+                <Monitor size={11} /> {deviceLabel}
               </p>
             </div>
             <button onClick={dismiss} aria-label="Dismiss"
@@ -117,28 +164,7 @@ export function PWAInstallBanner({ standalone = false }: { standalone?: boolean 
           </div>
 
           <ol className="space-y-2.5" aria-label="Installation steps">
-            {isAndroidChrome ? (
-              <>
-                <li className="flex items-center gap-3">
-                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand-500/20 text-[11px] font-bold text-brand-300">1</span>
-                  <span className="text-xs text-ink-300">
-                    Tap the <strong className="text-ink-100">⋮</strong> menu (top-right) in Chrome
-                  </span>
-                </li>
-                <li className="flex items-center gap-3">
-                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand-500/20 text-[11px] font-bold text-brand-300">2</span>
-                  <span className="text-xs text-ink-300">
-                    Tap <strong className="text-ink-100">Add to Home screen</strong>
-                  </span>
-                </li>
-                <li className="flex items-center gap-3">
-                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand-500/20 text-[11px] font-bold text-brand-300">3</span>
-                  <span className="text-xs text-ink-300">
-                    Tap <strong className="text-ink-100">Add</strong> — Vibify is on your Home Screen!
-                  </span>
-                </li>
-              </>
-            ) : isSafari ? (
+            {isSafari ? (
               <>
                 <li className="flex items-center gap-3">
                   <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand-500/20 text-[11px] font-bold text-brand-300">1</span>

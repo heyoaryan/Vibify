@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, lazy, Suspense } from 'react';
+import { useRef, useEffect, useState, useCallback, lazy, Suspense } from 'react';
 import { NavProvider, useNav } from './nav';
 import { PlayerProvider } from './player';
 import { useLyrics } from './useLyrics';
@@ -74,17 +74,64 @@ function ViewRouter({ onNavigate }: { onNavigate: () => void }) {
   );
 }
 
+// ─── Now Playing overlay — open/close context ────────────────────────────────
+// NowPlayingView needs to trigger the slide-down exit animation and only call
+// back() once the animation finishes. We pass a single `closeOverlay` callback
+// via context so the view doesn't need to know about animation state.
+
+import { NowPlayingCloseCtx } from './nowPlayingClose';
+export { useNowPlayingClose } from './nowPlayingClose';
+
 // ─── Now Playing full-screen overlay ─────────────────────────────────────────
 
 function NowPlayingOverlay() {
-  const { view } = useNav();
-  if (view.name !== 'nowplaying') return null;
+  const { view, back } = useNav();
+  const isNowPlaying = view.name === 'nowplaying';
+
+  // "visible" controls whether the overlay is in the DOM at all.
+  // We keep it true until the exit animation finishes.
+  const [visible, setVisible] = useState(false);
+  const [exiting, setExiting] = useState(false);
+  const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // When the nav pushes nowplaying, show the overlay with the enter animation
+  useEffect(() => {
+    if (isNowPlaying) {
+      // cancel any in-flight exit
+      if (exitTimerRef.current) clearTimeout(exitTimerRef.current);
+      setExiting(false);
+      setVisible(true);
+    }
+  }, [isNowPlaying]);
+
+  // Called by NowPlayingView's close button
+  const closeOverlay = useCallback(() => {
+    if (exiting) return; // already closing
+    setExiting(true);
+    // match np-slide-down duration (350ms)
+    exitTimerRef.current = setTimeout(() => {
+      setVisible(false);
+      setExiting(false);
+      back();
+    }, 340);
+  }, [exiting, back]);
+
+  if (!visible) return null;
+
   return (
-    <div className="fixed inset-0 z-50 animate-scale-in">
-      <Suspense fallback={<ViewFallback />}>
-        <NowPlayingView />
-      </Suspense>
-    </div>
+    <NowPlayingCloseCtx.Provider value={closeOverlay}>
+      <div
+        className={[
+          'fixed inset-0 z-50',
+          exiting ? 'animate-np-slide-down' : 'animate-np-slide-up',
+        ].join(' ')}
+        style={{ transformOrigin: 'bottom center' }}
+      >
+        <Suspense fallback={<ViewFallback />}>
+          <NowPlayingView />
+        </Suspense>
+      </div>
+    </NowPlayingCloseCtx.Provider>
   );
 }
 
@@ -167,6 +214,24 @@ export default function App() {
   // authReady flips to true once Supabase has resolved the initial session.
   // Without this, signed-in users see a login flash on every page load.
   const [authReady, setAuthReady] = useState(false);
+
+  // ── Portrait lock ──────────────────────────────────────────────────────────
+  // screen.orientation.lock() only works in a PWA (standalone / fullscreen
+  // display mode) or when the browser grants the permission. We call it
+  // unconditionally and silently swallow the rejection in regular browser tabs
+  // where it is not allowed. The manifest already declares "orientation":
+  // "portrait" so Android Chrome respects it at install time regardless.
+  useEffect(() => {
+    const tryLock = async () => {
+      try {
+        // @ts-ignore — not all TS lib versions include this yet
+        await screen.orientation?.lock?.('portrait');
+      } catch {
+        // Silently ignored — browser tab / unsupported platform
+      }
+    };
+    tryLock();
+  }, []);
 
   useEffect(() => {
     // getSession() resolves immediately if a session is cached in localStorage;

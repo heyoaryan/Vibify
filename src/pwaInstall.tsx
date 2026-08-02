@@ -2,12 +2,13 @@
  * PWAInstallContext — cross-platform install state
  *
  * Platform coverage:
- *   ✅ Android Chrome / Samsung Internet / Edge  → beforeinstallprompt API
+ *   ✅ Android Chrome / Samsung Internet / Edge  → beforeinstallprompt API; fallback → android-guide
+ *   ✅ Android Firefox / Opera / other Android   → android-guide (⋮ → Add to Home Screen)
  *   ✅ iOS Safari                                → Share → Add to Home Screen guide
  *   ✅ iOS Chrome / Firefox / other iOS browsers → same Share guide (Apple restriction)
  *   ✅ macOS / Windows / Linux Chrome / Edge     → beforeinstallprompt API
  *   ✅ macOS Safari (desktop)                    → desktop manual guide
- *   ✅ Firefox (all platforms)                   → desktop manual guide fallback
+ *   ✅ Desktop Firefox                           → desktop manual guide fallback
  *   ✅ Already installed (any platform)          → nothing shown
  */
 
@@ -23,12 +24,14 @@ import {
 import { InstalledToast } from './components/InstalledToast';
 
 export type InstallState =
-  | 'hidden'          // nothing to show
+  | 'checking'        // detection running — show button but state not yet known
+  | 'hidden'          // genuinely nothing to show (already installed / unsupported)
   | 'available'       // native prompt ready (Chrome/Edge/Android/Samsung)
   | 'installing'      // progress animation running
   | 'installed'       // show "Open App"
   | 'ios-guide'       // iOS any browser — Share menu steps
-  | 'desktop-guide';  // macOS Safari / Firefox / unsupported — manual steps
+  | 'android-guide'   // Android Firefox/Opera/Samsung fallback — ⋮ → Add to Home Screen
+  | 'desktop-guide';  // macOS Safari / Desktop Firefox / unsupported — manual steps
 
 // ─── Platform helpers ─────────────────────────────────────────────────────────
 
@@ -47,9 +50,14 @@ function isIOS(): boolean {
   );
 }
 
+function isAndroid(): boolean {
+  return /android/i.test(navigator.userAgent);
+}
+
 function isDesktopSafari(): boolean {
   return (
     !isIOS() &&
+    !isAndroid() &&
     /^((?!chrome|chromium|android).)*safari/i.test(navigator.userAgent)
   );
 }
@@ -60,7 +68,7 @@ function isFirefox(): boolean {
 
 /** True on any non-iOS, non-Android desktop/laptop environment */
 function isDesktop(): boolean {
-  return !isIOS() && !/android/i.test(navigator.userAgent);
+  return !isIOS() && !isAndroid();
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -70,13 +78,14 @@ type BeforeInstallPromptEvent = Event & {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
 };
 
-export type InstallPlatform = 'native' | 'ios' | 'desktop-manual';
+export type InstallPlatform = 'native' | 'ios' | 'android-manual' | 'desktop-manual';
 
 interface PWAInstallValue {
   state: InstallState;
   progress: number;
   platform: InstallPlatform;
   isDesktopEnv: boolean;
+  isChecking: boolean;
   canShowInline: boolean;
   showBannerCard: boolean;
   install: () => void;
@@ -99,7 +108,7 @@ const DEV_OVERRIDE =
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function PWAInstallProvider({ children }: { children: ReactNode }) {
-  const [state, setState]       = useState<InstallState>('hidden');
+  const [state, setState]       = useState<InstallState>('checking');
   const [progress, setProgress] = useState(0);
   const [dismissed, setDismissed] = useState(false);
   const [platform, setPlatform] = useState<InstallPlatform>('native');
@@ -109,9 +118,13 @@ export function PWAInstallProvider({ children }: { children: ReactNode }) {
   const startRef   = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!DEV_OVERRIDE && isAlreadyInstalled()) return;
+    if (!DEV_OVERRIDE && isAlreadyInstalled()) {
+      setState('hidden');
+      return;
+    }
     if (!DEV_OVERRIDE && sessionStorage.getItem(DISMISS_KEY)) {
       setDismissed(true);
+      setState('hidden');
       return;
     }
 
@@ -124,6 +137,11 @@ export function PWAInstallProvider({ children }: { children: ReactNode }) {
     if (DEV_OVERRIDE === 'desktop') {
       setPlatform('desktop-manual');
       setTimeout(() => setState('desktop-guide'), 500);
+      return;
+    }
+    if (DEV_OVERRIDE === 'android') {
+      setPlatform('android-manual');
+      setTimeout(() => setState('android-guide'), 500);
       return;
     }
     if (DEV_OVERRIDE === '1') {
@@ -139,14 +157,52 @@ export function PWAInstallProvider({ children }: { children: ReactNode }) {
       return () => clearTimeout(t);
     }
 
-    // ── Desktop Safari / Firefox — no beforeinstallprompt support ─────────
+    // ── Android ───────────────────────────────────────────────────────────
+    if (isAndroid()) {
+      const androidFirefox = isFirefox();
+      // Firefox on Android has no beforeinstallprompt — show guide immediately
+      if (androidFirefox) {
+        setPlatform('android-manual');
+        const t = setTimeout(() => setState('android-guide'), 2500);
+        return () => clearTimeout(t);
+      }
+
+      // Chrome / Samsung / Edge on Android → wait for native prompt
+      // If it hasn't fired within 4 s, fall back to manual guide
+      setPlatform('native');
+      let promptReceived = false;
+      const handler = (e: Event) => {
+        e.preventDefault();
+        promptReceived = true;
+        promptRef.current = e as BeforeInstallPromptEvent;
+        setState('available');
+      };
+      window.addEventListener('beforeinstallprompt', handler);
+
+      const fallbackTimer = setTimeout(() => {
+        if (!promptReceived) {
+          // Native prompt didn't fire — browser may have suppressed it
+          // (user already dismissed, engagement heuristics not met, etc.)
+          // Show the manual guide so mobile users still have a path to install.
+          setPlatform('android-manual');
+          setState('android-guide');
+        }
+      }, 4000);
+
+      return () => {
+        window.removeEventListener('beforeinstallprompt', handler);
+        clearTimeout(fallbackTimer);
+      };
+    }
+
+    // ── Desktop Safari / Desktop Firefox — no beforeinstallprompt support ─
     if (isDesktopSafari() || isFirefox()) {
       setPlatform('desktop-manual');
       const t = setTimeout(() => setState('desktop-guide'), 2500);
       return () => clearTimeout(t);
     }
 
-    // ── Chrome / Edge / Samsung / Android — native prompt ─────────────────
+    // ── Desktop Chrome / Edge / Samsung — native prompt ───────────────────
     setPlatform('native');
     const handler = (e: Event) => {
       e.preventDefault();
@@ -224,28 +280,38 @@ export function PWAInstallProvider({ children }: { children: ReactNode }) {
         // Native prompt available — fire it immediately
         install();
       } else {
-        // Prompt was already dismissed or not yet fired — show browser guide
+        // Prompt was already dismissed or not yet fired
+        // Show the right guide based on whether we're on Android or desktop
         setDismissed(false);
-        setState('desktop-guide');
+        if (isAndroid()) {
+          setState('android-guide');
+        } else {
+          setState('desktop-guide');
+        }
       }
     } else if (platform === 'ios') {
       setDismissed(false);
       setState('ios-guide');
+    } else if (platform === 'android-manual') {
+      setDismissed(false);
+      setState('android-guide');
     } else {
-      // desktop-manual (macOS Safari, Firefox, etc.)
+      // desktop-manual (macOS Safari, Desktop Firefox, etc.)
       setDismissed(false);
       setState('desktop-guide');
     }
   }, [platform, install]);
 
-  const visible        = !dismissed && state !== 'hidden';
+  const visible        = !dismissed && state !== 'hidden' && state !== 'checking';
   const canShowInline  = visible && (state === 'available' || state === 'installing' || state === 'installed');
-  const showBannerCard = visible && (state === 'ios-guide' || state === 'desktop-guide');
+  const showBannerCard = visible && (state === 'ios-guide' || state === 'android-guide' || state === 'desktop-guide');
   const isDesktopEnv   = isDesktop();
+  // True while we haven't yet determined if install is possible
+  const isChecking     = state === 'checking';
 
   const value: PWAInstallValue = {
     state, progress, platform,
-    isDesktopEnv, canShowInline, showBannerCard,
+    isDesktopEnv, isChecking, canShowInline, showBannerCard,
     install, openApp, dismiss, triggerGuide,
   };
 
@@ -261,8 +327,8 @@ export function usePWAInstall(): PWAInstallValue {
   const ctx = useContext(PWAInstallContext);
   if (!ctx) {
     return {
-      state: 'hidden', progress: 0, platform: 'native',
-      isDesktopEnv: false, canShowInline: false, showBannerCard: false,
+      state: 'checking', progress: 0, platform: 'native',
+      isDesktopEnv: false, isChecking: true, canShowInline: false, showBannerCard: false,
       install: () => {}, openApp: () => {}, dismiss: () => {}, triggerGuide: () => {},
     };
   }

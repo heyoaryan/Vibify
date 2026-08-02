@@ -2,27 +2,45 @@
  * InstallButton — smart PWA install control for the top bar.
  *
  * Behaviour by platform:
- *   Android (Chrome/Samsung/Edge) — Download icon, tap fires native install prompt
- *   iOS                           — Download icon, tap shows Share→Add to Home Screen guide
- *   macOS / Windows / Linux       — Download icon always visible, tap opens install guide modal
+ *   Android Chrome/Samsung/Edge — Download icon, tap fires native install prompt
+ *   Android Firefox/Opera       — Download icon, tap shows ⋮ → Add to Home Screen guide
+ *   iOS                         — Download icon, tap shows Share→Add to Home Screen guide
+ *   macOS / Windows / Linux     — Download icon always visible, tap opens install guide modal
  *
- * States:
- *   available       → Download button (native prompt ready)
- *   installing      → Spinning arc (progress feedback)
- *   installed       → Check icon (done)
- *   ios-guide       → Download icon that re-opens the guide
- *   desktop-guide   → Download icon that re-opens the modal
- *   hidden + desktop→ Download icon that triggers guide on click
- *   hidden + mobile → null (nothing to show)
+ * Visibility rules:
+ *   hidden (already installed)  → null on mobile; faint icon on desktop (can re-open guide)
+ *   checking                    → icon visible immediately — no flash-in after delay
+ *   available/guide/installing  → icon always visible with appropriate action
+ *   installed                   → check icon briefly
  */
 
 import { CheckCircle, Download } from 'lucide-react';
 import { usePWAInstall } from '../pwaInstall';
 
 export function InstallButton({ className = '' }: { className?: string }) {
-  const { canShowInline, isDesktopEnv, state, install, triggerGuide } = usePWAInstall();
+  const { isDesktopEnv, isChecking, state, install, triggerGuide } = usePWAInstall();
 
-  // Already installed — show a faint check mark briefly then nothing
+  // ── App already installed ────────────────────────────────────────────────
+  if (state === 'hidden') {
+    // Desktop: keep the icon so users can manually re-trigger the guide
+    if (isDesktopEnv) {
+      return (
+        <button
+          onClick={triggerGuide}
+          aria-label="Install Vibify"
+          title="Install Vibify"
+          className={`grid h-10 w-10 place-items-center rounded-full bg-white/[0.06]
+            text-ink-400 transition hover:bg-brand-500/20 hover:text-brand-300 active:scale-95 ${className}`}
+        >
+          <Download size={17} aria-hidden="true" />
+        </button>
+      );
+    }
+    // Mobile: app is installed / not installable — hide
+    return null;
+  }
+
+  // ── Installed confirmation ────────────────────────────────────────────────
   if (state === 'installed') {
     return (
       <span
@@ -34,7 +52,7 @@ export function InstallButton({ className = '' }: { className?: string }) {
     );
   }
 
-  // Installing — spinning arc progress ring
+  // ── Installing — spinning arc progress ring ───────────────────────────────
   if (state === 'installing') {
     return (
       <span
@@ -61,7 +79,7 @@ export function InstallButton({ className = '' }: { className?: string }) {
     );
   }
 
-  // Native prompt available (Android Chrome / Edge / Samsung) — one-tap install
+  // ── Native prompt ready (Android Chrome / Edge / Samsung) ────────────────
   if (state === 'available') {
     return (
       <button
@@ -76,8 +94,8 @@ export function InstallButton({ className = '' }: { className?: string }) {
     );
   }
 
-  // iOS or desktop guide states — icon re-opens the guide
-  if (state === 'ios-guide' || state === 'desktop-guide') {
+  // ── Guide states (ios / android / desktop) — re-opens guide on tap ───────
+  if (state === 'ios-guide' || state === 'android-guide' || state === 'desktop-guide') {
     return (
       <button
         onClick={triggerGuide}
@@ -91,36 +109,24 @@ export function InstallButton({ className = '' }: { className?: string }) {
     );
   }
 
-  // State is hidden but we're on desktop — always show the button so users
-  // can trigger the install guide at any time from the top bar.
-  if (isDesktopEnv && !canShowInline) {
+  // ── Checking state — detection running ───────────────────────────────────
+  // Show the button immediately so it doesn't flash in after the 2.5s delay.
+  // triggerGuide will fire the right action once state resolves.
+  if (isChecking) {
     return (
       <button
         onClick={triggerGuide}
         aria-label="Install Vibify"
         title="Install Vibify"
-        className={`grid h-10 w-10 place-items-center rounded-full bg-white/[0.06]
-          text-ink-400 transition hover:bg-brand-500/20 hover:text-brand-300 active:scale-95 ${className}`}
+        className={`grid h-10 w-10 place-items-center rounded-full bg-brand-500/15
+          text-brand-300 transition hover:bg-brand-500/30 active:scale-95 ${className}`}
       >
         <Download size={17} aria-hidden="true" />
       </button>
     );
   }
 
-  // Mobile with nothing to show
-  if (!canShowInline) return null;
-
-  return (
-    <button
-      onClick={install}
-      aria-label="Install Vibify"
-      title="Install Vibify"
-      className={`grid h-10 w-10 place-items-center rounded-full bg-brand-500/15
-        text-brand-300 transition hover:bg-brand-500/30 active:scale-95 ${className}`}
-    >
-      <Download size={17} aria-hidden="true" />
-    </button>
-  );
+  return null;
 }
 
 export default InstallButton;

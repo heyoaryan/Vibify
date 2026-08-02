@@ -19,6 +19,10 @@ html {
   text-size-adjust: 100%;
   -webkit-tap-highlight-color: transparent;
   overflow-x: hidden;
+  /* Block pull-to-refresh / overscroll bounce at the html level too —
+     some browsers (e.g. Samsung Internet) scroll the html element rather
+     than body, so we set this on both. */
+  overscroll-behavior: none;
 }
 
 html, body, #root {
@@ -185,3 +189,26 @@ canvas {
   contain: layout;
 }
 .snap-card { scroll-snap-align: start; }
+
+/* ── NowPlaying swipe card animations ───────────────────────────────────── */
+@keyframes swipeExitLeft {
+  from { transform: translateX(0);      opacity: 1; }
+  to   { transform: translateX(-110%);  opacity: 0; }
+}
+@keyframes swipeExitRight {
+  from { transform: translateX(0);     opacity: 1; }
+  to   { transform: translateX(110%);  opacity: 0; }
+}
+@keyframes swipeEnterFromRight {
+  from { transform: translateX(110%);  opacity: 0; }
+  to   { transform: translateX(0);     opacity: 1; }
+}
+@keyframes swipeEnterFromLeft {
+  from { transform: translateX(-110%); opacity: 0; }
+  to   { transform: translateX(0);     opacity: 1; }
+}
+
+.swipe-exit-left  { animation: swipeExitLeft      0.22s cubic-bezier(0.4,0,1,1)     both; }
+.swipe-exit-right { animation: swipeExitRight     0.22s cubic-bezier(0.4,0,1,1)     both; }
+.swipe-enter-right{ animation: swipeEnterFromRight 0.32s cubic-bezier(0.22,1,0.36,1) both; }
+.swipe-enter-left { animation: swipeEnterFromLeft  0.32s cubic-bezier(0.22,1,0.36,1) both; }
