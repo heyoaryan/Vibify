@@ -16,6 +16,19 @@ import { searchJamendo, getTrendingJamendo, getJamendoTrackUrl, isJamendoId } fr
 const JIOSAAVN_API = '/jiosaavn/api.php';
 const DES_KEY = '38346591';
 
+/**
+ * In production, JioSaavn CDN URLs (akamaized.net) are geo-restricted to India.
+ * Vercel servers are outside India, so we proxy audio through /api/audio.
+ * In dev, Vite runs locally in India so the direct URL works fine.
+ */
+function proxyAudioUrl(cdnUrl: string): string {
+  if (!cdnUrl) return cdnUrl;
+  // Dev: direct URL works (running in India)
+  if (import.meta.env.DEV) return cdnUrl;
+  // Production: route through server-side proxy
+  return `/api/audio?url=${encodeURIComponent(cdnUrl)}`;
+}
+
 // ─── DES-ECB decryption (Web Crypto API) ────────────────────────────────────
 
 /**
@@ -256,7 +269,7 @@ function mapSong(raw: JioDetailSong): Song | null {
     const conn = (navigator as unknown as { connection?: ConnectionInfo }).connection;
     const slowNetwork = conn?.effectiveType === 'slow-2g' || conn?.effectiveType === '2g' || conn?.saveData;
     const quality = dataSaver || slowNetwork ? '96' : audioQuality;
-    audioUrl = qualityUrl(base, quality);
+    audioUrl = proxyAudioUrl(qualityUrl(base, quality));
   } catch {
     return null;
   }

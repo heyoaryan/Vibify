@@ -5,5 +5,8 @@
     { "source": "/lrclib/:path*",             "destination": "/api/lrclib?path=:path*" },
     { "source": "/lyricsovh/:path*",          "destination": "/api/lyricsovh?path=:path*" },
     { "source": "/(.*)",                      "destination": "/index.html"            }
-  ]
+  ],
+  "functions": {
+    "api/audio.ts": { "maxDuration": 30 }
+  }
 }

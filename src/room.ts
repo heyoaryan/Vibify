@@ -25,6 +25,9 @@ export type RoomState = {
   status: RoomStatus;
   position: number;
   maxMembers: number;
+  queue: Song[];
+  currentIndex: number;
+  lastChangedBy: string | null;
 };
 
 export const MAX_MEMBERS = 6;
@@ -91,16 +94,19 @@ export function useRoom() {
   const positionSyncRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoStartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isHostRef = useRef(false);
-  const { togglePlay, seek, playSongs, current } = usePlayer();
+  const { togglePlay, seek, playSongs, current, isPlaying: localIsPlaying } = usePlayer();
   const { position } = usePlayback();
   const user = useCurrentUser();
 
   const positionRef = useRef(position);
   const isPlayingRef = useRef(false);
   const currentRef = useRef(current);
+  const userIdRef = useRef(user.id);
 
   useEffect(() => { positionRef.current = position; }, [position]);
   useEffect(() => { currentRef.current = current; }, [current]);
+  useEffect(() => { userIdRef.current = user.id; }, [user.id]);
+  useEffect(() => { isPlayingRef.current = localIsPlaying; }, [localIsPlaying]);
 
   useEffect(() => {
     if (roomState) {
@@ -166,7 +172,9 @@ export function useRoom() {
       if (!roomState || roomState.status !== 'waiting') return;
       if (roomState.members.length < MIN_MEMBERS) return;
 
-      const song = currentRef.current || ALL_SONGS[0] || null;
+      const song = roomState.queue.length > 0 
+        ? roomState.queue[0] 
+        : (currentRef.current || ALL_SONGS[0] || null);
 
       await supabase
         .from('rooms')
@@ -176,12 +184,14 @@ export function useRoom() {
           current_song: songToJson(song),
           is_playing: true,
           position: 0,
+          current_index: 0,
+          last_changed_by: user.id,
         })
         .eq('id', roomState.id);
     }, AUTO_START_DELAY);
 
     return clearTimers;
-  }, [roomState?.status, roomState?.members.length, roomState?.id, clearTimers]);
+  }, [roomState?.status, roomState?.members.length, roomState?.id, roomState?.queue, clearTimers, user.id]);
 
   useEffect(() => {
     if (!roomState || roomState.status !== 'playing') {
@@ -220,16 +230,27 @@ export function useRoom() {
               status: newRoom.status || prev.status,
               position: newRoom.position ?? prev.position,
               maxMembers: newRoom.max_members || prev.maxMembers,
+              queue: newRoom.queue ? newRoom.queue.map((s: any) => jsonToSong(s)) : prev.queue,
+              currentIndex: newRoom.current_index ?? prev.currentIndex,
+              lastChangedBy: newRoom.last_changed_by || prev.lastChangedBy,
             };
 
             if (!isHostRef.current) {
-              if (updated.status === 'playing' && prev.status === 'waiting') {
+              // Handle queue and song changes for non-host members
+              if (updated.queue.length !== prev.queue.length || 
+                  updated.currentIndex !== prev.currentIndex) {
+                // Queue or index changed, update local state
+                if (updated.currentSong && updated.currentSong.id !== prev.currentSong?.id) {
+                  playSongs(updated.queue, updated.currentSong.id);
+                  setTimeout(() => seek(updated.position), 150);
+                }
+              } else if (updated.status === 'playing' && prev.status === 'waiting') {
                 if (updated.currentSong) {
-                  playSongs([updated.currentSong], updated.currentSong.id);
+                  playSongs(updated.queue.length > 0 ? updated.queue : [updated.currentSong], updated.currentSong.id);
                   setTimeout(() => seek(updated.position), 150);
                 }
               } else if (updated.currentSong && updated.currentSong.id !== prev.currentSong?.id) {
-                playSongs([updated.currentSong], updated.currentSong.id);
+                playSongs(updated.queue.length > 0 ? updated.queue : [updated.currentSong], updated.currentSong.id);
                 setTimeout(() => seek(updated.position), 150);
               } else if (updated.isPlaying !== prev.isPlaying) {
                 if (updated.isPlaying && !isPlayingRef.current) {
@@ -239,6 +260,16 @@ export function useRoom() {
                 }
               } else if (Math.abs(updated.position - prev.position) > POSITION_DRIFT_THRESHOLD) {
                 seek(updated.position);
+              }
+            } else {
+              // Host: sync queue changes but don't override playback
+              if (updated.queue.length !== prev.queue.length || 
+                  updated.currentIndex !== prev.currentIndex) {
+                // Queue was modified by another member, update local state
+                if (updated.currentSong && updated.lastChangedBy !== userIdRef.current) {
+                  playSongs(updated.queue, updated.currentSong.id);
+                  setTimeout(() => seek(updated.position), 150);
+                }
               }
             }
 
@@ -272,6 +303,7 @@ export function useRoom() {
 
     const code = generateCode();
     const roomUser = userToRoomUser(user);
+    const initialQueue = currentRef.current ? [songToJson(currentRef.current)] : [];
 
     const { data, error: insertError } = await supabase
       .from('rooms')
@@ -283,6 +315,9 @@ export function useRoom() {
         is_playing: false,
         position: 0,
         max_members: maxMembers,
+        queue: initialQueue,
+        current_index: 0,
+        last_changed_by: user.id,
       })
       .select()
       .single();
@@ -294,6 +329,7 @@ export function useRoom() {
     }
 
     isHostRef.current = true;
+    const fallbackQueue = currentRef.current ? [currentRef.current] : [];
     setRoomState({
       id: data.id,
       code: data.code,
@@ -304,6 +340,9 @@ export function useRoom() {
       status: data.status,
       position: data.position || 0,
       maxMembers: data.max_members || maxMembers,
+      queue: data.queue ? data.queue.map((s: any) => jsonToSong(s)) : fallbackQueue,
+      currentIndex: data.current_index || 0,
+      lastChangedBy: data.last_changed_by || null,
     });
     setIsLoading(false);
     return true;
@@ -366,6 +405,9 @@ export function useRoom() {
       status: updated.status,
       position: updated.position || 0,
       maxMembers: updated.max_members || MAX_MEMBERS,
+      queue: updated.queue ? updated.queue.map((s: any) => jsonToSong(s)) : [],
+      currentIndex: updated.current_index || 0,
+      lastChangedBy: updated.last_changed_by || null,
     });
     setIsLoading(false);
     return true;
@@ -447,6 +489,9 @@ export function useRoom() {
       status: room.status,
       position: room.position || 0,
       maxMembers: room.max_members || MAX_MEMBERS,
+      queue: room.queue ? room.queue.map((s: any) => jsonToSong(s)) : [],
+      currentIndex: room.current_index || 0,
+      lastChangedBy: room.last_changed_by || null,
     });
     setIsLoading(false);
     return true;
@@ -477,15 +522,98 @@ export function useRoom() {
   }, [roomState]);
 
   const setRoomSong = useCallback(async (song: Song): Promise<void> => {
-    if (!roomState || !isHostRef.current) return;
+    if (!roomState) return;
     await supabase
       .from('rooms')
       .update({
         current_song_id: song.id,
         current_song: songToJson(song),
+        position: 0,
+        last_changed_by: user.id,
       })
       .eq('id', roomState.id);
-  }, [roomState]);
+  }, [roomState, user.id]);
+
+  // Add song to queue - any member can do this
+  const addToQueue = useCallback(async (song: Song): Promise<void> => {
+    if (!roomState) return;
+    
+    const updatedQueue = [...roomState.queue, song];
+    await supabase
+      .from('rooms')
+      .update({
+        queue: updatedQueue.map(s => songToJson(s)),
+        last_changed_by: user.id,
+      })
+      .eq('id', roomState.id);
+  }, [roomState, user.id]);
+
+  // Play specific song from queue - any member can do this
+  const playFromQueue = useCallback(async (index: number): Promise<void> => {
+    if (!roomState || index < 0 || index >= roomState.queue.length) return;
+    
+    const song = roomState.queue[index];
+    await supabase
+      .from('rooms')
+      .update({
+        current_song_id: song.id,
+        current_song: songToJson(song),
+        current_index: index,
+        position: 0,
+        is_playing: true,
+        last_changed_by: user.id,
+      })
+      .eq('id', roomState.id);
+  }, [roomState, user.id]);
+
+  // Play next song in queue - any member can do this
+  const playNext = useCallback(async (): Promise<void> => {
+    if (!roomState || roomState.queue.length === 0) return;
+    
+    const nextIndex = (roomState.currentIndex + 1) % roomState.queue.length;
+    await playFromQueue(nextIndex);
+  }, [roomState, playFromQueue]);
+
+  // Play previous song in queue - any member can do this
+  const playPrevious = useCallback(async (): Promise<void> => {
+    if (!roomState || roomState.queue.length === 0) return;
+    
+    const prevIndex = roomState.currentIndex === 0 
+      ? roomState.queue.length - 1 
+      : roomState.currentIndex - 1;
+    await playFromQueue(prevIndex);
+  }, [roomState, playFromQueue]);
+
+  // Remove song from queue - any member can do this
+  const removeFromQueue = useCallback(async (index: number): Promise<void> => {
+    if (!roomState || index < 0 || index >= roomState.queue.length) return;
+    
+    const updatedQueue = roomState.queue.filter((_, i) => i !== index);
+    const newIndex = roomState.currentIndex > index 
+      ? roomState.currentIndex - 1 
+      : roomState.currentIndex;
+    
+    await supabase
+      .from('rooms')
+      .update({
+        queue: updatedQueue.map(s => songToJson(s)),
+        current_index: Math.max(0, newIndex),
+        last_changed_by: user.id,
+      })
+      .eq('id', roomState.id);
+  }, [roomState, user.id]);
+
+  // Toggle play/pause - any member can do this
+  const togglePlayPause = useCallback(async (): Promise<void> => {
+    if (!roomState) return;
+    await supabase
+      .from('rooms')
+      .update({ 
+        is_playing: !roomState.isPlaying,
+        last_changed_by: user.id,
+      })
+      .eq('id', roomState.id);
+  }, [roomState, user.id]);
 
   return {
     roomState,
@@ -498,5 +626,11 @@ export function useRoom() {
     playRoom,
     pauseRoom,
     setRoomSong,
+    addToQueue,
+    playFromQueue,
+    playNext,
+    playPrevious,
+    removeFromQueue,
+    togglePlayPause,
   };
 }

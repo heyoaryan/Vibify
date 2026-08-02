@@ -133,11 +133,21 @@ function ensureAudioContext() {
 }
 
 function downgradeQuality(src: string): string | null {
-  const mp4 = src.match(/_(\d+)\.mp4$/);
+  const mp4 = src.match(/_(\d+)\.mp4($|[?])/);
   if (mp4) {
+    // Handle proxied URLs: /api/audio?url=...%2F_320.mp4
+    const isProxied = src.startsWith('/api/audio?url=');
+    if (isProxied) {
+      try {
+        const inner = decodeURIComponent(src.replace('/api/audio?url=', ''));
+        const downgraded = downgradeQuality(inner);
+        if (!downgraded) return null;
+        return `/api/audio?url=${encodeURIComponent(downgraded)}`;
+      } catch { return null; }
+    }
     const q = parseInt(mp4[1]);
-    if (q >= 320) return src.replace(/_320\.mp4$/, '_160.mp4');
-    if (q >= 160) return src.replace(/_160\.mp4$/, '_96.mp4');
+    if (q >= 320) return src.replace(/_320\.mp4/, '_160.mp4');
+    if (q >= 160) return src.replace(/_160\.mp4/, '_96.mp4');
     return null;
   }
   const mp3 = src.match(/_(\d+)k\.mp3$/);

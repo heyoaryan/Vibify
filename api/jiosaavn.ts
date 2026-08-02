@@ -33,6 +33,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     res.status(upstream_res.status).send(body);
   } catch (err) {
     console.error('[jiosaavn proxy]', err);
-    res.status(502).json({ error: 'Bad gateway' });
+    res.status(502).json({ 
+      error: 'Bad gateway', 
+      details: err instanceof Error ? err.message : String(err),
+      upstream 
+    });
   }
 }

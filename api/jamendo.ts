@@ -14,6 +14,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
+  // Verify credentials are configured
+  if (!CLIENT_ID) {
+    console.error('[jamendo] JAMENDO_CLIENT_ID not configured');
+    res.status(500).json({ 
+      error: 'Server configuration error', 
+      details: 'JAMENDO_CLIENT_ID environment variable not set. Please configure in Vercel dashboard.' 
+    });
+    return;
+  }
+
   try {
     // Path is forwarded as ?path=... by the Vercel rewrite rule.
     // req.query.path can be a string like "tracks" or an array like ["tracks"]
