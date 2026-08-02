@@ -86,24 +86,47 @@ export const HomeView = memo(function HomeView() {
 
     const delay = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
     Promise.all([
-      getTrendingSongs(20),
+      // Quick picks - diverse new songs from different search queries
+      Promise.all([
+        searchSongs('new hindi songs 2025', 5),
+        searchSongs('latest punjabi songs', 5),
+        searchSongs('trending tamil songs', 5),
+      ]).then(results => dedupe(results.flat())),
+      
+      // Trending now - diverse trending from multiple genres
+      Promise.all([
+        getTrendingSongs(10),
+        searchSongs('viral bollywood songs', 8),
+        searchSongs('trending pop hindi', 7),
+      ]).then(results => dedupe(results.flat())),
+      
       delay(250).then(() => getNewReleases(20)),
       delay(500).then(() => getArtistSongs('arijit singh', 8)),
-      delay(750).then(() => searchSongs('chill hindi 2025', 10)),
+      
+      // Made for you - continuous playback with more songs
+      delay(750).then(() => Promise.all([
+        searchSongs('chill hindi lofi', 15),
+        searchSongs('romantic hindi songs', 15),
+        searchSongs('upbeat bollywood', 15),
+      ]).then(results => dedupe(results.flat()))),
+      
       delay(900).then(() => getRecommendations(12)),
-    ]).then(([trendingRaw, releasesRaw, arijitRaw, chillRaw, forYouRaw]) => {
+    ]).then(([quickPicksRaw, trendingRaw, releasesRaw, arijitRaw, madeForYouRaw, forYouRaw]) => {
       const used = new Set<string>();
 
-      const picks = dedupe(trendingRaw).slice(0, 6);
+      // Quick picks - fresh diverse songs
+      const picks = dedupe(quickPicksRaw).slice(0, 6);
       picks.forEach(s => used.add(s.id));
 
-      const trendingF = dedupe(trendingRaw).filter(s => !used.has(s.id));
+      // Trending - diverse trending songs
+      const trendingF = dedupe(trendingRaw).filter(s => !used.has(s.id)).slice(0, 20);
       trendingF.forEach(s => used.add(s.id));
 
       const releasesF = dedupe(releasesRaw).filter(s => !used.has(s.id)).slice(0, 12);
       releasesF.forEach(s => used.add(s.id));
 
-      const mfy = dedupe(chillRaw).filter(s => !used.has(s.id)).slice(0, 10);
+      // Made for you - large collection for continuous play (45 songs)
+      const mfy = dedupe(madeForYouRaw).filter(s => !used.has(s.id)).slice(0, 45);
       mfy.forEach(s => used.add(s.id));
 
       const spot = arijitRaw.find(s => !used.has(s.id)) ?? arijitRaw[0] ?? trendingRaw[0] ?? null;

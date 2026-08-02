@@ -162,9 +162,24 @@ function decryptUrl(encryptedUrl: string): string {
 
   const plain = desDecrypt(padded, DES_KEY);
 
-  // Convert to string, stop at first null byte
+  // Strip PKCS5/PKCS7 padding from the end of the decrypted block.
+  // The last byte tells us how many padding bytes to remove (value 1–8).
+  let end = plain.length;
+  if (end > 0) {
+    const padByte = plain[end - 1];
+    if (padByte >= 1 && padByte <= 8) {
+      // Validate: all trailing `padByte` bytes must equal `padByte`
+      let valid = true;
+      for (let i = end - padByte; i < end; i++) {
+        if (plain[i] !== padByte) { valid = false; break; }
+      }
+      if (valid) end -= padByte;
+    }
+  }
+
+  // Convert to string — only printable ASCII, stop at first null byte
   let url = '';
-  for (let i = 0; i < plain.length; i++) {
+  for (let i = 0; i < end; i++) {
     if (plain[i] === 0) break;
     if (plain[i] >= 0x20 && plain[i] <= 0x7e) url += String.fromCharCode(plain[i]);
   }
@@ -216,8 +231,8 @@ function decodeHtml(raw: string): string {
 
 function cleanTitle(raw: string): string {
   let t = decodeHtml(raw);
-  t = t.replace(/\s*[\[(]From\s+[^)\]]*[)\]]/gi, '');
-  t = t.replace(/\s*[\[(](?:Remix|Remastered|Official|Lyrical?|Audio|Video|Full Song|HD|4K|feat\.?|ft\.?)[^\])]*[)\]]/gi, '');
+  t = t.replace(/\s*[(]From\s+[^)]*[)]/gi, '');
+  t = t.replace(/\s*[(](?:Remix|Remastered|Official|Lyrical?|Audio|Video|Full Song|HD|4K|feat\.?|ft\.?)[^)]*[)]/gi, '');
   return t.replace(/\s{2,}/g, ' ').trim();
 }
 

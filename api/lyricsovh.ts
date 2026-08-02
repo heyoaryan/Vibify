@@ -3,24 +3,42 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 /**
  * Proxy for https://api.lyrics.ovh
  * Usage: /lyricsovh/v1/{artist}/{title}
- * The path after /lyricsovh is forwarded to api.lyrics.ovh.
- * 
- * Note: In Vercel, req.url is the DESTINATION path (/api/lyricsovh), not the source.
- * The original path is captured in req.params.path from the :path* wildcard.
+ *
+ * The Vercel rewrite forwards the path as ?path=... e.g.:
+ *   /lyricsovh/v1/Arijit%20Singh/Kesariya  →  /api/lyricsovh?path=v1/Arijit%20Singh/Kesariya
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // Handle CORS preflight
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept');
+  if (req.method === 'OPTIONS') {
+    res.status(204).end();
+    return;
+  }
+
   try {
+    // Path forwarded as ?path=... by Vercel rewrite; may be array for multi-segment paths
+    const rawPath = req.query.path;
     let path = '/';
-    
-    const paramsPath = (req as { params?: { path?: string } }).params?.path;
-    if (paramsPath) {
-      path = '/' + paramsPath;
+    if (rawPath) {
+      const pathStr = Array.isArray(rawPath) ? rawPath.join('/') : String(rawPath);
+      path = '/' + pathStr.replace(/^\/+/, '');
     }
 
-    const qs = new URLSearchParams(req.query as Record<string, string>).toString();
-    const upstream = `https://api.lyrics.ovh${path}${qs ? '?' + qs : ''}`;
+    // Forward all query params except our internal 'path' routing param
+    const qs = new URLSearchParams();
+    for (const [key, value] of Object.entries(req.query)) {
+      if (key === 'path') continue;
+      if (value === undefined || value === null) continue;
+      if (Array.isArray(value)) {
+        for (const v of value) qs.append(key, String(v));
+      } else {
+        qs.append(key, String(value));
+      }
+    }
 
-    console.log(`[lyricsovh] ${req.method} ${path} → ${upstream}`);
+    const upstream = `https://api.lyrics.ovh${path}${qs.toString() ? '?' + qs.toString() : ''}`;
 
     const upstream_res = await fetch(upstream, {
       headers: {
@@ -31,7 +49,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const body = await upstream_res.text();
 
-    res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Content-Type', upstream_res.headers.get('content-type') ?? 'application/json');
     res.status(upstream_res.status).send(body);
   } catch (err) {

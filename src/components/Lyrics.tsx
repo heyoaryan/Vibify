@@ -14,16 +14,22 @@ export type LyricsProps = {
 // ─── Keyframes — injected once into <head> ────────────────────────────────────
 const KEYFRAMES = `
   @keyframes lyricIn {
-    0%   { opacity: 0; transform: translateY(22px) scale(0.95); }
+    0%   { opacity: 0; transform: translateY(20px) scale(0.96); }
     100% { opacity: 1; transform: translateY(0)    scale(1);    }
   }
   @keyframes batchIn {
-    0%   { opacity: 0; transform: translateY(14px); }
+    0%   { opacity: 0; transform: translateY(12px); }
     100% { opacity: 1; transform: translateY(0);    }
   }
   @keyframes beamSweep {
-    0%   { -webkit-mask-position: -80% center; mask-position: -80% center; }
-    100% { -webkit-mask-position: 180% center; mask-position: 180% center; }
+    0%   { 
+      -webkit-mask-position: -50% center; 
+      mask-position: -50% center; 
+    }
+    100% { 
+      -webkit-mask-position: 150% center; 
+      mask-position: 150% center; 
+    }
   }
   @keyframes tuneNote {
     0%,100% { transform: translateY(0px);  opacity: 0.4; }
@@ -40,53 +46,63 @@ function injectStyles() {
 }
 
 // ─── ActiveLine: CSS mask-sweep glow ─────────────────────────────────────────
-// Uses a single <div> wrapper. The base text is dim; a second absolutely
-// positioned copy (same dimensions, block-level) carries the bright beam.
-// Block-level containment fixes the "text outside bracket" issue.
+// Text-bounded beam that stays strictly within text boundaries
 function ActiveLine({
   text, animKey, lineDurationMs,
 }: {
   text: string; animKey: number; lineDurationMs: number;
 }) {
-  const sweepMs = Math.max(700, lineDurationMs * 0.75);
+  const sweepMs = Math.max(800, lineDurationMs * 0.8);
 
   return (
-    // Block wrapper — gives the absolute child a proper containing block
     <div
       key={animKey}
       style={{
         position:   'relative',
-        display:    'block',
-        animation:  'lyricIn 0.42s cubic-bezier(0.22,1,0.36,1) both',
-        whiteSpace: 'nowrap',
-        overflow:   'hidden',
-        textOverflow: 'ellipsis',
+        display:    'inline-block',
+        animation:  'lyricIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) both',
+        whiteSpace: 'normal',
+        wordWrap:   'break-word',
+        overflowWrap: 'break-word',
+        lineHeight: 1.45,
+        width: '100%',
       }}
     >
-      {/* Layer 1: base text — dim white, sets the layout height */}
-      <div style={{ color: 'rgba(255,255,255,0.38)', userSelect: 'none',
-                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+      {/* Layer 1: base text — dim white */}
+      <div style={{ 
+        color: 'rgba(255,255,255,0.45)', 
+        userSelect: 'none',
+        whiteSpace: 'normal',
+        wordWrap: 'break-word',
+        overflowWrap: 'break-word',
+      }}>
         {text}
       </div>
 
-      {/* Layer 2: bright beam — exact same text, stacked on top */}
+      {/* Layer 2: bright beam — stacked on top, contained within text */}
       <div
         aria-hidden
         style={{
           position:   'absolute',
-          inset:      0,
+          top:        0,
+          left:       0,
+          right:      0,
           color:      '#ffffff',
-          textShadow: '0 0 20px rgba(255,255,255,0.9), 0 0 48px rgba(255,255,255,0.4)',
-          whiteSpace: 'nowrap',
-          overflow:   'hidden',
-          WebkitMaskImage: 'linear-gradient(90deg,transparent 0%,#000 28%,#000 72%,transparent 100%)',
-          maskImage:       'linear-gradient(90deg,transparent 0%,#000 28%,#000 72%,transparent 100%)',
-          WebkitMaskSize:   '58% 100%',
-          maskSize:         '58% 100%',
+          textShadow: '0 0 28px rgba(255,255,255,1), 0 0 56px rgba(255,255,255,0.5)',
+          whiteSpace: 'normal',
+          wordWrap:   'break-word',
+          overflowWrap: 'break-word',
+          WebkitMaskImage: 'linear-gradient(90deg, transparent 0%, #000 20%, #000 80%, transparent 100%)',
+          maskImage:       'linear-gradient(90deg, transparent 0%, #000 20%, #000 80%, transparent 100%)',
+          WebkitMaskSize:   '50% 100%',
+          maskSize:         '50% 100%',
           WebkitMaskRepeat: 'no-repeat',
           maskRepeat:       'no-repeat',
-          animation:        `beamSweep ${sweepMs}ms 100ms linear both`,
+          WebkitMaskPosition: '-50% center',
+          maskPosition:      '-50% center',
+          animation:        `beamSweep ${sweepMs}ms 100ms cubic-bezier(0.33, 1, 0.68, 1) both`,
           pointerEvents:    'none',
+          overflow:         'hidden',
         }}
       >
         {text}
@@ -142,9 +158,9 @@ function NoLyrics({ songTitle }: { songTitle?: string }) {
 
 // ─── Responsive font sizes ────────────────────────────────────────────────────
 const FONT = {
-  active: 'clamp(1.1rem, 3.2vw, 1.6rem)',   // smaller so long lines stay single-line
-  near:   'clamp(0.85rem, 2.4vw, 1.15rem)',
-  far:    'clamp(0.75rem, 2vw,   1rem)',
+  active: 'clamp(1.4rem, 4vw + 0.2rem, 2.2rem)',   // mobile: ~1.4rem, desktop: ~2.2rem
+  near:   'clamp(1rem, 2.5vw + 0.1rem, 1.4rem)',   // mobile: ~1rem, desktop: ~1.4rem
+  far:    'clamp(0.9rem, 2vw, 1.2rem)',            // mobile: ~0.9rem, desktop: ~1.2rem
 };
 // When the active line crosses a batch boundary the whole group swaps out
 // with a smooth slide-up animation — like Apple Music.
@@ -216,11 +232,11 @@ export function Lyrics({ lines, position, status, onSeek, songTitle }: LyricsPro
   const preIntro = !hasStarted && lines.length > 0;
 
   return (
-    <div className="flex h-full w-full flex-col items-center justify-center px-6 sm:px-12">
+    <div className="flex h-full w-full flex-col items-center justify-center px-4 sm:px-8 md:px-12">
 
       {/* Pre-intro tune — visible while song plays before first lyric */}
       {preIntro && (
-        <div className="flex items-center justify-center gap-3 mb-2">
+        <div className="flex items-center justify-center gap-3 mb-4">
           {[0,1,2].map(j => (
             <Music2 key={j} size={20} className="text-white/50"
               style={{ animation: `tuneNote 1.1s ${j*0.25}s ease-in-out infinite` }} />
@@ -231,10 +247,10 @@ export function Lyrics({ lines, position, status, onSeek, songTitle }: LyricsPro
       {/* Batch window — key forces remount + re-animation on batch change */}
       <div
         key={batchAnimKey}
-        className="w-full max-w-lg text-center"
-        style={{ animation: 'batchIn 0.5s cubic-bezier(0.22,1,0.36,1) both' }}
+        className="w-full max-w-2xl text-center"
+        style={{ animation: 'batchIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) both' }}
       >
-        <div className="space-y-1">
+        <div className="space-y-2 md:space-y-3">
           {windowLines.map((line, wi) => {
             const globalIdx  = batchStart + wi;
             const isActive   = globalIdx === activeIndex;
@@ -244,9 +260,9 @@ export function Lyrics({ lines, position, status, onSeek, songTitle }: LyricsPro
             const dist       = Math.abs(globalIdx - activeIndex);
 
             const opacity = showActive ? 1
-              : dist === 0 ? 0.28
-              : dist === 1 ? (isPast ? 0.42 : 0.22)
-              : 0.15;
+              : dist === 0 ? 0.32
+              : dist === 1 ? (isPast ? 0.48 : 0.26)
+              : 0.18;
 
             const fontSize = showActive
               ? FONT.active
@@ -266,19 +282,17 @@ export function Lyrics({ lines, position, status, onSeek, songTitle }: LyricsPro
                 key={globalIdx}
                 type="button"
                 onClick={() => onSeek(line.t)}
-                className="w-full rounded-xl px-2 py-[5px] text-center"
+                className="w-full rounded-xl px-3 py-2 text-center transition-all duration-500 hover:bg-white/5"
                 style={{
                   fontFamily:    '"Sora", "Plus Jakarta Sans", system-ui, sans-serif',
                   fontWeight:    showActive ? 800 : isPast ? 600 : 500,
                   fontSize,
-                  lineHeight:    1.35,
+                  lineHeight:    showActive ? 1.45 : 1.4,
                   opacity,
-                  letterSpacing: showActive ? '-0.01em' : '0',
-                  filter:        isFuture && hasStarted ? 'blur(0.8px)' : 'none',
-                  transition:    'opacity 0.5s ease, font-size 0.4s ease, filter 0.4s ease',
-                  whiteSpace:    'nowrap',
-                  overflow:      'hidden',
-                  textOverflow:  'ellipsis',
+                  letterSpacing: showActive ? '-0.015em' : '0',
+                  filter:        isFuture && hasStarted ? 'blur(1px)' : 'none',
+                  transform:     showActive ? 'scale(1.02)' : 'scale(1)',
+                  transition:    'all 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
                 }}
               >
                 {showActive

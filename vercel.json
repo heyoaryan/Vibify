@@ -1,9 +1,9 @@
 {
   "rewrites": [
-    { "source": "/jiosaavn/api.php", "destination": "/api/jiosaavn" },
-    { "source": "/api/jamendo/:path*", "destination": "/api/jamendo" },
-    { "source": "/lrclib/:path*",    "destination": "/api/lrclib"    },
-    { "source": "/lyricsovh/:path*", "destination": "/api/lyricsovh" },
-    { "source": "/(.*)",             "destination": "/index.html"    }
+    { "source": "/jiosaavn/api.php",          "destination": "/api/jiosaavn"          },
+    { "source": "/api/jamendo/:path*",        "destination": "/api/jamendo?path=:path*" },
+    { "source": "/lrclib/:path*",             "destination": "/api/lrclib?path=:path*" },
+    { "source": "/lyricsovh/:path*",          "destination": "/api/lyricsovh?path=:path*" },
+    { "source": "/(.*)",                      "destination": "/index.html"            }
   ]
 }

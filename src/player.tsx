@@ -76,6 +76,11 @@ function makeAudio() {
   if (typeof Audio === 'undefined') return null;
   const el = new Audio();
   el.preload = 'auto';
+  // crossOrigin is NOT set here. JioSaavn CDN does not send CORS headers, so
+  // setting crossOrigin='anonymous' would cause the browser to block the request.
+  // Web Audio API (createMediaElementSource) requires crossOrigin='anonymous',
+  // but we set it lazily in ensureAudioContext() only when audio enhancement is
+  // enabled, before any src is assigned to the element.
   return el;
 }
 
@@ -94,8 +99,13 @@ let bassFilter: BiquadFilterNode | null = null;
 let compressor: DynamicsCompressorNode | null = null;
 
 function ensureAudioContext() {
-  if (!audioCtx && typeof AudioContext !== 'undefined') {
+  if (!audioCtx && typeof AudioContext !== 'undefined' && getSettings().audioEnhancement) {
     try {
+      // crossOrigin must be set before createMediaElementSource.
+      // We only enable audio enhancement for Jamendo tracks (which do support CORS);
+      // for JioSaavn tracks the AudioContext path is skipped (no crossOrigin needed).
+      if (audioA) audioA.crossOrigin = 'anonymous';
+      if (audioB) audioB.crossOrigin = 'anonymous';
       audioCtx = new AudioContext();
       sourceA = audioCtx.createMediaElementSource(audioA!);
       sourceB = audioCtx.createMediaElementSource(audioB!);
@@ -148,7 +158,9 @@ function downgradeQuality(src: string): string | null {
  */
 function unlockAudioOnFirstGesture() {
   const unlock = () => {
-    ensureAudioContext();
+    if (getSettings().audioEnhancement) {
+      ensureAudioContext();
+    }
     [audioA, audioB].forEach((el) => {
       if (!el) return;
       el.volume = 0;
@@ -319,7 +331,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           playedRef.current = false;
           activeAudio.src = freshUrl;
           activeAudio.load();
-          activeAudio.play().catch(() => {});
+          activeAudio.play().catch((err: DOMException) => {
+            if (err.name === 'AbortError') return;
+            console.error('[player] jamendo refresh play() failed:', err.name, err.message);
+            handlePlaybackFailure();
+          });
           setQueue(q => q.map(s => s.id === song.id ? { ...s, src: freshUrl } : s));
           sourceQueueRef.current = sourceQueueRef.current.map(s => s.id === song.id ? { ...s, src: freshUrl } : s);
           return;
@@ -336,7 +352,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         if (!activeAudio) return;
         playedRef.current = false;
         activeAudio.load();
-        activeAudio.play().catch(() => {});
+        activeAudio.play().catch((err: DOMException) => {
+          if (err.name === 'AbortError') return;
+          console.error('[player] retry play() failed:', err.name, err.message);
+          handlePlaybackFailure();
+        });
       }, delay);
     } else {
       const lowerSrc = downgradeQuality(activeAudio.src);
@@ -345,7 +365,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         playedRef.current = false;
         activeAudio.src = lowerSrc;
         activeAudio.load();
-        activeAudio.play().catch(() => {});
+        activeAudio.play().catch((err: DOMException) => {
+          if (err.name === 'AbortError') return;
+          console.error('[player] quality downgrade play() failed:', err.name, err.message);
+          handlePlaybackFailure();
+        });
       } else {
         setIsPlaying(false);
       }
@@ -735,6 +759,52 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     } catch { /* some browsers throw if duration is Infinity */ }
   // Run on every position change — but position only updates ~10fps now
   }, [position, duration]);
+
+  // Handle page visibility and audio session for background playback
+  useEffect(() => {
+    // Request audio session lock for background playback (supported on mobile browsers)
+    let wakeLock: any = null;
+    
+    const requestWakeLock = async () => {
+      try {
+        if ('wakeLock' in navigator && isPlaying) {
+          // @ts-ignore - Wake Lock API not fully typed
+          wakeLock = await navigator.wakeLock.request('screen');
+        }
+      } catch (err) {
+        // Wake lock not supported or denied - not critical
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      // When page becomes visible again, resume audio context if suspended
+      if (document.visibilityState === 'visible') {
+        if (audioCtx?.state === 'suspended') {
+          audioCtx.resume();
+        }
+        if (isPlaying && activeAudio?.paused) {
+          // Resume playback if it was interrupted
+          activeAudio.play().catch(() => {});
+        }
+        requestWakeLock();
+      }
+    };
+
+    // Setup visibility listener
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    // Request wake lock when playing starts
+    if (isPlaying) {
+      requestWakeLock();
+    }
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (wakeLock) {
+        wakeLock.release().catch(() => {});
+      }
+    };
+  }, [isPlaying]);
 
   // Sync volume / mute to active audio
   useEffect(() => {

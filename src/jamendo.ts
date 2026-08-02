@@ -1,11 +1,15 @@
 import type { Song } from './types';
 
+/**
+ * Jamendo API client.
+ *
+ * All requests go to /api/jamendo (Vercel serverless proxy in prod,
+ * Vite dev-proxy in dev). The proxy injects JAMENDO_CLIENT_ID and
+ * JAMENDO_CLIENT_SECRET server-side — no credentials are ever exposed
+ * in the browser bundle.
+ */
+
 const JAMENDO_API = '/api/jamendo';
-const JAMENDO_CLIENT_ID = (
-  import.meta.env.VITE_JAMENDO_CLIENT_ID ||
-  import.meta.env.JAMENDO_CLIENT_ID ||
-  ''
-) as string;
 
 type JamendoTrack = {
   id: string;
@@ -49,11 +53,12 @@ function highResImage(url: string): string {
   return url.replace(/-\d+x\d+\.jpg$/, '-500x500.jpg');
 }
 
+/**
+ * Build a URL for the Jamendo proxy.
+ * client_id is NOT included here — the server-side proxy adds it.
+ */
 function jamendoUrl(path: string, params: Record<string, string>): string {
   const qs = new URLSearchParams({ format: 'json' });
-  if (JAMENDO_CLIENT_ID) {
-    qs.set('client_id', JAMENDO_CLIENT_ID);
-  }
   for (const [key, value] of Object.entries(params)) {
     qs.set(key, value);
   }
@@ -83,7 +88,7 @@ function mapJamendoTrack(track: JamendoTrack): Song | null {
 
 /** Search Jamendo for tracks matching the query */
 export async function searchJamendo(query: string, limit = 20): Promise<Song[]> {
-  if (!query.trim() || !JAMENDO_CLIENT_ID) return [];
+  if (!query.trim()) return [];
 
   try {
     const url = jamendoUrl('/tracks', { limit: String(limit), search: query, include: 'musicinfo' });
@@ -103,8 +108,6 @@ export async function searchJamendo(query: string, limit = 20): Promise<Song[]> 
 
 /** Get trending songs from Jamendo */
 export async function getTrendingJamendo(limit = 20): Promise<Song[]> {
-  if (!JAMENDO_CLIENT_ID) return [];
-
   try {
     const url = jamendoUrl('/tracks', { limit: String(limit), order: 'popularity_total', include: 'musicinfo' });
     const res = await fetch(url, { headers: { Accept: 'application/json' } });
@@ -123,8 +126,6 @@ export async function getTrendingJamendo(limit = 20): Promise<Song[]> {
 
 /** Get songs by genre/tags from Jamendo */
 export async function getGenreJamendo(genre: string, limit = 20): Promise<Song[]> {
-  if (!JAMENDO_CLIENT_ID) return [];
-
   try {
     const url = jamendoUrl('/tracks', { limit: String(limit), tags: genre, order: 'popularity_total', include: 'musicinfo' });
     const res = await fetch(url, { headers: { Accept: 'application/json' } });
@@ -144,7 +145,7 @@ export async function getGenreJamendo(genre: string, limit = 20): Promise<Song[]
 /** Get a fresh streaming URL for a Jamendo track by its ID (with jm- prefix) */
 export async function getJamendoTrackUrl(jmId: string): Promise<string | null> {
   const id = jmId.replace(/^jm-/, '');
-  if (!id || !JAMENDO_CLIENT_ID) return null;
+  if (!id) return null;
   try {
     const url = jamendoUrl('/tracks', { id, include: 'musicinfo' });
     const res = await fetch(url, { headers: { Accept: 'application/json' } });

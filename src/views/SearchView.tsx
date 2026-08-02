@@ -1,5 +1,5 @@
 import { Loader2, Mic, MicOff, Music2, Play, Search as SearchIcon, X, Clock } from 'lucide-react';
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { usePlayer } from '../player';
 import type { Song } from '../types';
@@ -72,122 +72,116 @@ function deduplicateSongs(songs: Song[]): Song[] {
 }
 
 const GENRES = [
-  { label: 'Bollywood',    query: 'bollywood hits',          hue: 340 },
-  { label: 'English Pop',  query: 'english pop hits',        hue: 240 },
-  { label: 'BTS',          query: 'BTS songs',               hue: 280 },
-  { label: 'K-Pop',        query: 'kpop hits',               hue: 320 },
-  { label: 'Punjabi',      query: 'punjabi hits',            hue: 30  },
-  { label: 'Lo-fi',        query: 'lofi hindi',              hue: 200 },
-  { label: 'Romantic',     query: 'romantic hindi songs',    hue: 0   },
-  { label: 'Party',        query: 'party songs hindi',       hue: 260 },
-  { label: 'Devotional',   query: 'hindi devotional songs',  hue: 45  },
-  { label: 'Retro',        query: 'old hindi songs retro',   hue: 170 },
-  { label: 'Hip-Hop',      query: 'hindi hip hop rap',       hue: 280 },
-  { label: 'Sad Songs',    query: 'sad hindi songs',         hue: 230 },
-  { label: 'Item Songs',   query: 'item songs bollywood',    hue: 10  },
-  { label: 'Sufi',         query: 'sufi songs hindi',        hue: 150 },
-  { label: 'Workout',      query: 'workout gym songs hindi', hue: 90  },
-  { label: 'AR Rahman',    query: 'ar rahman songs',         hue: 190 },
-  { label: 'Indie',        query: 'hindi indie songs',       hue: 310 },
-  { label: 'Chill',        query: 'chill vibes hindi',       hue: 175 },
-  { label: 'Trending',     query: 'trending songs 2024',     hue: 55  },
-  { label: 'Rock',         query: 'rock songs',              hue: 120 },
-  { label: 'Jazz',         query: 'jazz songs',              hue: 40  },
-  { label: 'Classical',    query: 'classical music',         hue: 180 },
-  { label: 'EDM',          query: 'edm electronic dance',    hue: 300 },
-  { label: 'Country',      query: 'country songs',           hue: 80  },
-  { label: 'R&B',          query: 'rnb songs',               hue: 250 },
-  { label: 'Taylor Swift', query: 'taylor swift songs',      hue: 130 },
-  { label: 'Arijit Singh', query: 'arijit singh',            hue: 210 },
+  { label: 'Bollywood',    query: 'bollywood hits',          hue: 340, icon: '🎬' },
+  { label: 'English Pop',  query: 'english pop hits',        hue: 240, icon: '🎵' },
+  { label: 'Punjabi',      query: 'punjabi hits',            hue: 30,  icon: '🥁' },
+  { label: 'K-Pop',        query: 'kpop hits',               hue: 320, icon: '✨' },
+  { label: 'Lo-fi',        query: 'lofi hindi',              hue: 200, icon: '🌙' },
+  { label: 'Romantic',     query: 'romantic hindi songs',    hue: 0,   icon: '💕' },
+  { label: 'Party',        query: 'party songs hindi',       hue: 260, icon: '🎉' },
+  { label: 'Hip-Hop',      query: 'hindi hip hop rap',       hue: 280, icon: '🎤' },
+  { label: 'Sad Songs',    query: 'sad hindi songs',         hue: 230, icon: '💔' },
+  { label: 'Sufi',         query: 'sufi songs hindi',        hue: 150, icon: '🕊️' },
+  { label: 'Workout',      query: 'workout gym songs hindi', hue: 90,  icon: '💪' },
+  { label: 'Chill',        query: 'chill vibes hindi',       hue: 175, icon: '😌' },
+  { label: 'Retro',        query: 'old hindi songs retro',   hue: 170, icon: '📻' },
+  { label: 'Rock',         query: 'rock songs',              hue: 120, icon: '🎸' },
+  { label: 'Arijit Singh', query: 'arijit singh',            hue: 210, icon: '🎙️' },
+  { label: 'Taylor Swift', query: 'taylor swift songs',      hue: 130, icon: '🌟' },
 ];
 
-// ─── Module-level search cache (persists across re-mounts) ───────────────────
+// ─── Module-level search cache ────────────────────────────────────────────────
 const _searchCache = new Map<string, Song[]>();
 
-// Precompute searchable text for ALL_SONGS for faster local search
+// Precompute searchable text for ALL_SONGS
 const _searchableSongs = ALL_SONGS.map(song => ({
   song,
   hay: `${song.title} ${song.artist} ${song.album} ${song.genre}`.toLowerCase(),
 }));
 
-// ─── Skeleton rows (memoized constant) ───────────────────────────────────────
+// ─── Skeleton rows ────────────────────────────────────────────────────────────
 const SkeletonRows = memo(function SkeletonRows({ count }: { count: number }) {
   return (
-    <div className="space-y-1 overflow-hidden rounded-xl">
+    <div className="space-y-1">
       {Array.from({ length: count }).map((_, i) => (
-        <div key={i} className="grid grid-cols-[20px_40px_1fr_auto] items-center gap-3 px-3 py-2.5 sm:grid-cols-[24px_44px_1fr_auto]">
-          <div className="h-4 w-4 animate-pulse rounded bg-ink-700" />
-          <div className="h-10 w-10 animate-pulse rounded-md bg-ink-700" />
-          <div className="space-y-1.5">
-            <div className="h-3 w-2/3 animate-pulse rounded bg-ink-700" />
-            <div className="h-2.5 w-1/2 animate-pulse rounded bg-ink-800" />
+        <div key={i} className="flex items-center gap-3 rounded-xl px-3 py-2.5">
+          <div className="w-5 shrink-0" />
+          <div className="h-11 w-11 shrink-0 animate-pulse rounded-xl bg-ink-800" />
+          <div className="flex-1 space-y-2">
+            <div className="h-3 w-3/5 animate-pulse rounded-lg bg-ink-800" />
+            <div className="h-2.5 w-2/5 animate-pulse rounded-lg bg-ink-900" />
           </div>
-          <div className="h-3 w-8 animate-pulse rounded bg-ink-700" />
         </div>
       ))}
     </div>
   );
 });
 
-// ─── Single song row — memoized so list re-renders only when isCurrent changes ─
+// ─── Song row ─────────────────────────────────────────────────────────────────
 const SongRow = memo(function SongRow({
-  song,
-  index,
-  isCurrent,
-  isPlaying,
-  onPlay,
+  song, index, isCurrent, isPlaying, onPlay,
 }: {
-  song: Song;
-  index: number;
-  isCurrent: boolean;
-  isPlaying: boolean;
-  onPlay: () => void;
+  song: Song; index: number; isCurrent: boolean; isPlaying: boolean; onPlay: () => void;
 }) {
   return (
     <button
       onClick={onPlay}
-      className="group grid w-full grid-cols-[20px_40px_1fr_auto] items-center gap-2.5 px-3 py-2.5
-        text-left transition-colors hover:bg-white/5 sm:grid-cols-[24px_44px_1fr_auto] sm:gap-3"
+      className={`group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left
+        transition-colors hover:bg-white/[0.06] active:bg-white/10
+        ${isCurrent ? 'bg-brand-500/10' : ''}`}
     >
-      <span className="text-xs tabular-nums text-ink-300 sm:text-sm">
+      {/* Index / eq bars */}
+      <div className="w-5 shrink-0 text-center">
         {isCurrent && isPlaying ? (
-          <span className="flex items-end gap-[2px] h-4">
-            {[0.6, 1, 0.4].map((h, j) => (
+          <span className="flex items-end justify-center gap-[2px] h-3.5">
+            {[0.5, 1, 0.6].map((h, j) => (
               <span key={j} className="w-[2px] rounded-full bg-brand-400 animate-bar-rise"
-                style={{ height: `${h * 100}%`, animationDelay: `${j * 0.2}s` }} />
+                style={{ height: `${h * 100}%`, animationDelay: `${j * 0.18}s` }} />
             ))}
           </span>
         ) : (
-          <>
-            <span className="group-hover:hidden">{index + 1}</span>
-            <Play size={13} className="hidden fill-brand-400 text-brand-400 group-hover:block" />
-          </>
+          <span className={`text-xs tabular-nums ${isCurrent ? 'text-brand-400' : 'text-ink-500'} group-hover:hidden`}>
+            {index + 1}
+          </span>
         )}
+        {!(isCurrent && isPlaying) && (
+          <Play size={12} className="hidden fill-ink-50 text-ink-50 group-hover:block mx-auto" />
+        )}
+      </div>
+
+      {/* Artwork */}
+      <div className="relative shrink-0">
+        <Artwork title={song.title} hue={song.hue} hue2={song.hue2} imageUrl={song.imageUrl}
+          className="h-11 w-11 sm:h-12 sm:w-12" rounded="rounded-xl" />
+        {isCurrent && isPlaying && (
+          <div className="absolute inset-0 rounded-xl bg-black/30" />
+        )}
+      </div>
+
+      {/* Info */}
+      <div className="min-w-0 flex-1">
+        <p className={`truncate text-sm font-semibold leading-tight
+          ${isCurrent ? 'text-brand-400' : 'text-ink-50'}`}>
+          {song.title}
+        </p>
+        <p className="mt-0.5 truncate text-xs text-ink-400">
+          {song.artist}
+        </p>
+      </div>
+
+      {/* Duration — hidden on mobile */}
+      <span className="hidden shrink-0 text-xs tabular-nums text-ink-600 sm:block">
+        {formatTime(song.duration)}
       </span>
-      <Artwork title={song.title} hue={song.hue} hue2={song.hue2} imageUrl={song.imageUrl}
-        className="h-10 w-10" rounded="rounded-md" />
-       <div className="min-w-0">
-         <p className={`line-clamp-2 break-words text-xs font-medium leading-snug sm:text-sm ${isCurrent ? 'text-brand-400' : 'text-ink-50'}`}>
-           {song.title}
-         </p>
-         <p className="mt-0.5 line-clamp-2 break-words text-[10px] leading-snug text-ink-300 sm:text-xs">{song.artist} · {song.album}</p>
-       </div>
-      <span className="hidden text-xs tabular-nums text-ink-300 sm:block">{formatTime(song.duration)}</span>
     </button>
   );
 });
 
-// ─── Suggestion item ──────────────────────────────────────────────────────────
-const SuggestionItem = memo(function SuggestionItem({
-  text,
-  type,
-  active,
-  onSelect,
+// ─── Recent search item ───────────────────────────────────────────────────────
+const RecentItem = memo(function RecentItem({
+  text, active, onSelect,
 }: {
-  text: string;
-  type: 'recent' | 'genre' | 'cache';
-  active: boolean;
-  onSelect: () => void;
+  text: string; active: boolean; onSelect: () => void;
 }) {
   return (
     <button
@@ -195,13 +189,7 @@ const SuggestionItem = memo(function SuggestionItem({
       className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors
         ${active ? 'bg-white/10 text-ink-50' : 'text-ink-200 hover:bg-white/5'}`}
     >
-      {type === 'recent' ? (
-        <Clock size={14} className="shrink-0 text-ink-400" />
-      ) : type === 'genre' ? (
-        <Music2 size={14} className="shrink-0 text-brand-400" />
-      ) : (
-        <SearchIcon size={14} className="shrink-0 text-ink-400" />
-      )}
+      <Clock size={14} className="shrink-0 text-ink-400" />
       <span className="truncate">{text}</span>
     </button>
   );
@@ -218,13 +206,13 @@ export const SearchView = memo(function SearchView() {
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
 
-  // Suggestions state
-  const [suggestions, setSuggestions] = useState<{ text: string; type: 'recent' | 'genre' | 'cache' }[]>([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
-  const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  // Recent searches — shown as dropdown only when input is empty + focused
+  const [recents, setRecents] = useState<string[]>([]);
+  const [showRecents, setShowRecents] = useState(false);
+  const [activeRecentIdx, setActiveRecentIdx] = useState(-1);
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 0 });
 
-  // Browse all — fetched once, cached in module scope
+  // Browse all
   const [browseAll, setBrowseAll] = useState<Song[]>(() => _searchCache.get('__browse__') ?? []);
   const [browseLoading, setBrowseLoading] = useState(_searchCache.get('__browse__') == null);
 
@@ -232,16 +220,31 @@ export const SearchView = memo(function SearchView() {
   const abortRef = useRef<(() => void) | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const suggestionsRef = useRef<HTMLDivElement>(null);
+  const recentsRef = useRef<HTMLDivElement>(null);
 
   const { playSongs, current, isPlaying, togglePlay } = usePlayer();
 
-  // Load recent searches on mount
-  useEffect(() => {
-    setRecentSearches(getRecentSearches());
-  }, []);
+  // Update dropdown position whenever it opens (fixed positioning needs viewport coords)
+  useLayoutEffect(() => {
+    if (!showRecents || !inputRef.current) return;
+    const rect = inputRef.current.getBoundingClientRect();
+    setDropdownPos({ top: rect.bottom + 8, left: rect.left, width: rect.width });
 
-  // ── Local (offline) search — partial/fuzzy substring match ───────────────
+    // Reposition on scroll or resize while open
+    const reposition = () => {
+      if (!inputRef.current) return;
+      const r = inputRef.current.getBoundingClientRect();
+      setDropdownPos({ top: r.bottom + 8, left: r.left, width: r.width });
+    };
+    window.addEventListener('scroll', reposition, true);
+    window.addEventListener('resize', reposition);
+    return () => {
+      window.removeEventListener('scroll', reposition, true);
+      window.removeEventListener('resize', reposition);
+    };
+  }, [showRecents]);
+
+  // ── Local fuzzy search ────────────────────────────────────────────────────
   const localSearch = useCallback((text: string, limit = 20) => {
     const terms = text.toLowerCase().split(/\s+/).filter(t => t.length >= 2);
     if (!terms.length) return [];
@@ -261,80 +264,32 @@ export const SearchView = memo(function SearchView() {
       .slice(0, limit);
   }, []);
 
-  // ── Fetch suggestions for a query ────────────────────────────────────────
-  const fetchSuggestions = useCallback(async (q: string) => {
-    if (!q.trim()) {
-      setSuggestions([]);
-      return;
-    }
-    const qLower = q.toLowerCase();
-    const items: { text: string; type: 'recent' | 'genre' | 'cache' }[] = [];
-
-    // Recent searches
-    const recent = getRecentSearches();
-    for (const s of recent) {
-      if (s.toLowerCase().includes(qLower) && s.toLowerCase() !== qLower) {
-        items.push({ text: s, type: 'recent' });
-      }
-    }
-
-    // Genre matches
-    for (const g of GENRES) {
-      if (g.label.toLowerCase().includes(qLower) || g.query.toLowerCase().includes(qLower)) {
-        items.push({ text: g.label, type: 'genre' });
-      }
-    }
-
-    // Cached queries (from memory)
-    for (const cachedQ of _searchCache.keys()) {
-      if (cachedQ.startsWith('__') || cachedQ.startsWith('genre:')) continue;
-      if (cachedQ.toLowerCase().includes(qLower) && cachedQ.toLowerCase() !== qLower) {
-        items.push({ text: cachedQ, type: 'cache' });
-      }
-    }
-
-    // Deduplicate suggestions
-    const seen = new Set<string>();
-    const unique = items.filter(item => {
-      const key = item.text.toLowerCase();
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-
-    setSuggestions(unique.slice(0, 6));
-    setActiveSuggestionIndex(-1);
-  }, []);
-
-  // ── Browse all — fetch once on first mount ─────────────────────────────────
+  // ── Browse all — fetch once on first mount ────────────────────────────────
   useEffect(() => {
     if (_searchCache.has('__browse__')) return;
     setBrowseLoading(true);
     searchSongs('trending hindi songs 2024', 10)
       .then(songs => {
-        const dedupd = deduplicateSongs(songs);
-        _searchCache.set('__browse__', dedupd);
-        setBrowseAll(dedupd);
+        const deduped = deduplicateSongs(songs);
+        _searchCache.set('__browse__', deduped);
+        setBrowseAll(deduped);
       })
       .catch(() => {})
       .finally(() => setBrowseLoading(false));
   }, []);
 
-  // ── "Go to artist" event from NowPlayingView action sheet ──────────────────
+  // ── "Go to artist" event ──────────────────────────────────────────────────
   useEffect(() => {
     const handler = async (e: Event) => {
       const artist = (e as CustomEvent<string>).detail;
       if (!artist) return;
       setQuery(artist);
-      setShowSuggestions(false);
+      setShowRecents(false);
       setLoading(true);
       setSearched(false);
       const cached = _searchCache.get(artist);
       if (cached) {
-        setResults(cached);
-        setSearched(true);
-        setLoading(false);
-        return;
+        setResults(cached); setSearched(true); setLoading(false); return;
       }
       try {
         const remote = await searchSongs(artist, 20);
@@ -347,8 +302,7 @@ export const SearchView = memo(function SearchView() {
       } catch {
         setResults(deduplicateSongs(localSearch(artist, 20)));
       } finally {
-        setSearched(true);
-        setLoading(false);
+        setSearched(true); setLoading(false);
       }
     };
     window.addEventListener('vibify-search', handler);
@@ -356,7 +310,7 @@ export const SearchView = memo(function SearchView() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Voice recognition — created once on mount ──────────────────────────────
+  // ── Voice recognition ─────────────────────────────────────────────────────
   useEffect(() => {
     const Ctor = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!Ctor) { setVoiceSupported(false); return; }
@@ -383,100 +337,67 @@ export const SearchView = memo(function SearchView() {
     return () => { recognitionRef.current?.stop(); recognitionRef.current = null; };
   }, []);
 
-  // ── Instant local results + stale-while-revalidate ────────────────────────
+  // ── Search effect — local instant + debounced remote ─────────────────────
   useEffect(() => {
     const q = query.trim();
     if (!q) {
-      setResults([]);
-      setSearched(false);
-      setLoading(false);
-      setShowSuggestions(false);
+      setResults([]); setSearched(false); setLoading(false);
       return;
     }
 
-    // Cancel any pending remote fetch
     if (abortRef.current) { abortRef.current(); abortRef.current = null; }
 
-    // INSTANT: Show local results immediately
     const localResults = localSearch(q, 20);
-    const hasLocal = localResults.length > 0;
+    if (localResults.length > 0) { setResults(localResults); setSearched(true); }
 
-    if (hasLocal) {
-      setResults(localResults);
-      setSearched(true);
-    }
-
-    // Check memory cache
     const cached = _searchCache.get(q);
     if (cached && cached.length > 0) {
-      setResults(cached);
-      setSearched(true);
-      setLoading(false);
-      // Still revalidate in background if local results are different
-      if (!hasLocal || cached.length !== localResults.length) {
-        // Background revalidation
+      setResults(cached); setSearched(true); setLoading(false);
+      if (!localResults.length || cached.length !== localResults.length) {
         searchSongs(q, 30).then(remote => {
           const remoteIds = new Set(remote.map(s => s.id));
           const merged = [...remote, ...localResults.filter(s => !remoteIds.has(s.id))];
           const next = deduplicateSongs(merged.length > 0 ? merged : localResults);
-          _searchCache.set(q, next);
-          setCachedSearch(q, next);
-          setResults(next);
+          _searchCache.set(q, next); setCachedSearch(q, next); setResults(next);
         }).catch(() => {});
       }
       return;
     }
 
-    // No cache hit — fetch remote (don't show spinner if we have local results)
-    if (!hasLocal) {
-      setLoading(true);
-    }
+    if (!localResults.length) setLoading(true);
 
-    // Async IndexedDB cache check
     let cancelled = false;
     getCachedSearch(q).then(idbCached => {
       if (cancelled || !idbCached) return;
       _searchCache.set(q, idbCached);
-      setResults(idbCached);
-      setSearched(true);
-      setLoading(false);
-      // Background revalidation
+      setResults(idbCached); setSearched(true); setLoading(false);
       searchSongs(q, 30).then(remote => {
         const remoteIds = new Set(remote.map(s => s.id));
         const local = localSearch(q, 20);
         const merged = [...remote, ...local.filter(s => !remoteIds.has(s.id))];
         const next = deduplicateSongs(merged.length > 0 ? merged : local);
-        _searchCache.set(q, next);
-        setCachedSearch(q, next);
-        setResults(next);
+        _searchCache.set(q, next); setCachedSearch(q, next); setResults(next);
       }).catch(() => {});
     });
 
-    // Debounced remote fetch
     debounceRef.current = setTimeout(async () => {
       if (cancelled) return;
       try {
-        const [remote, localResults2] = await Promise.all([
+        const [remote, local2] = await Promise.all([
           searchSongs(q, 30),
           Promise.resolve(localSearch(q, 20)),
         ]);
-
         let merged = remote;
         if (remote.length < 5) {
           const remoteIds = new Set(remote.map(s => s.id));
-          merged = [...remote, ...localResults2.filter(s => !remoteIds.has(s.id))];
+          merged = [...remote, ...local2.filter(s => !remoteIds.has(s.id))];
         }
-
-        const next = deduplicateSongs(merged.length > 0 ? merged : localResults2);
-        _searchCache.set(q, next);
-        setCachedSearch(q, next);
-        setResults(next);
+        const next = deduplicateSongs(merged.length > 0 ? merged : local2);
+        _searchCache.set(q, next); setCachedSearch(q, next); setResults(next);
       } catch {
-        const fallback = deduplicateSongs(localSearch(q, 20));
-        setResults(fallback);
+        setResults(deduplicateSongs(localSearch(q, 20)));
       } finally {
-        setSearched(true);
-        setLoading(false);
+        setSearched(true); setLoading(false);
       }
     }, 250);
 
@@ -487,89 +408,79 @@ export const SearchView = memo(function SearchView() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query]);
 
-  // ── Suggestions dropdown logic ────────────────────────────────────────────
-  useEffect(() => {
-    if (query.trim()) {
-      fetchSuggestions(query);
-    } else {
-      setSuggestions([]);
-    }
-  }, [query, fetchSuggestions]);
+  // ── Input handlers ────────────────────────────────────────────────────────
 
+  // Show last 5 recent searches only when input is empty and focused
   const handleInputFocus = useCallback(() => {
-    if (!query.trim() && recentSearches.length > 0) {
-      const items = recentSearches.slice(0, 5).map(text => ({ text, type: 'recent' as const }));
-      setSuggestions(items);
-      setShowSuggestions(true);
-      setActiveSuggestionIndex(-1);
+    if (!query.trim()) {
+      const r = getRecentSearches();
+      setRecents(r.slice(0, 5));
+      setShowRecents(r.length > 0);
+      setActiveRecentIdx(-1);
     }
-  }, [query, recentSearches]);
+  }, [query]);
 
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setQuery(value);
-    setShowSuggestions(value.trim().length > 0 || recentSearches.length > 0);
-    setActiveSuggestionIndex(-1);
-  }, [recentSearches.length]);
+    if (value.trim().length > 0) setShowRecents(false);
+  }, []);
 
-  const selectSuggestion = useCallback((text: string) => {
+  const selectRecent = useCallback((text: string) => {
     setQuery(text);
-    setShowSuggestions(false);
-    setActiveSuggestionIndex(-1);
+    setShowRecents(false);
+    setActiveRecentIdx(-1);
     saveRecentSearch(text);
-    setRecentSearches(getRecentSearches());
     inputRef.current?.blur();
   }, []);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (!showSuggestions || suggestions.length === 0) return;
-
+    if (!showRecents || recents.length === 0) return;
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setActiveSuggestionIndex(prev => (prev + 1) % suggestions.length);
+      setActiveRecentIdx(prev => (prev + 1) % recents.length);
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setActiveSuggestionIndex(prev => (prev - 1 + suggestions.length) % suggestions.length);
+      setActiveRecentIdx(prev => (prev - 1 + recents.length) % recents.length);
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      if (activeSuggestionIndex >= 0 && activeSuggestionIndex < suggestions.length) {
-        selectSuggestion(suggestions[activeSuggestionIndex].text);
+      if (activeRecentIdx >= 0 && activeRecentIdx < recents.length) {
+        selectRecent(recents[activeRecentIdx]);
       }
     } else if (e.key === 'Escape') {
-      setShowSuggestions(false);
-      setActiveSuggestionIndex(-1);
+      setShowRecents(false);
+      setActiveRecentIdx(-1);
     }
-  }, [showSuggestions, suggestions, activeSuggestionIndex, selectSuggestion]);
+  }, [showRecents, recents, activeRecentIdx, selectRecent]);
 
-  // Close suggestions when clicking outside
+  // Close recents when clicking outside
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (suggestionsRef.current && !suggestionsRef.current.contains(e.target as Node) &&
-          inputRef.current && !inputRef.current.contains(e.target as Node)) {
-        setShowSuggestions(false);
+    const handle = (e: MouseEvent) => {
+      if (
+        recentsRef.current && !recentsRef.current.contains(e.target as Node) &&
+        inputRef.current && !inputRef.current.contains(e.target as Node)
+      ) {
+        setShowRecents(false);
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('mousedown', handle);
+    return () => document.removeEventListener('mousedown', handle);
   }, []);
 
   const playSong = useCallback((s: Song) => {
     if (current?.id === s.id) togglePlay();
     else playSongs(results.length > 0 ? results : [s], s.id);
+    // save to recents when user explicitly plays from search results
+    saveRecentSearch(s.title);
   }, [current, togglePlay, playSongs, results]);
 
   const toggleVoiceSearch = useCallback(() => {
     const rec = recognitionRef.current;
     if (!rec) { setVoiceError('Voice search is not supported in this browser.'); return; }
     if (voiceListening) {
-      rec.stop();
-      setVoiceListening(false);
-      setInterimTranscript('');
-      return;
+      rec.stop(); setVoiceListening(false); setInterimTranscript(''); return;
     }
-    setVoiceError(null);
-    setInterimTranscript('');
-    setVoiceListening(true);
+    setVoiceError(null); setInterimTranscript(''); setVoiceListening(true);
     if (current && isPlaying) togglePlay();
     try { rec.start(); }
     catch { setVoiceListening(false); setVoiceError('Voice search could not be started.'); }
@@ -579,54 +490,38 @@ export const SearchView = memo(function SearchView() {
     const cached = _searchCache.get('genre:' + g.query);
     if (cached) { playSongs(cached, cached[0].id); return; }
     const list = deduplicateSongs(await getArtistSongs(g.query, 10));
-    if (list.length) {
-      _searchCache.set('genre:' + g.query, list);
-      playSongs(list, list[0].id);
-    }
+    if (list.length) { _searchCache.set('genre:' + g.query, list); playSongs(list, list[0].id); }
   }, [playSongs]);
 
   const clearQuery = useCallback(() => {
     setQuery('');
-    setShowSuggestions(recentSearches.length > 0);
-    setActiveSuggestionIndex(-1);
+    setShowRecents(false);
+    setActiveRecentIdx(-1);
     inputRef.current?.focus();
-  }, [recentSearches.length]);
+  }, []);
 
-  // Memoize the results list so it doesn't re-render when only playback state changes
   const resultRows = useMemo(() =>
     results.map((s, i) => (
-      <SongRow
-        key={s.id}
-        song={s}
-        index={i}
+      <SongRow key={s.id} song={s} index={i}
         isCurrent={current?.id === s.id}
         isPlaying={isPlaying && current?.id === s.id}
-        onPlay={() => playSong(s)}
-      />
+        onPlay={() => playSong(s)} />
     )),
   // eslint-disable-next-line react-hooks/exhaustive-deps
   [results, current?.id, isPlaying]);
 
   const browseRows = useMemo(() =>
     browseAll.map((s, i) => (
-      <SongRow
-        key={s.id}
-        song={s}
-        index={i}
+      <SongRow key={s.id} song={s} index={i}
         isCurrent={current?.id === s.id}
         isPlaying={isPlaying && current?.id === s.id}
-        onPlay={() => {
-          if (current?.id === s.id) togglePlay();
-          else playSongs(browseAll, s.id);
-        }}
-      />
+        onPlay={() => { if (current?.id === s.id) togglePlay(); else playSongs(browseAll, s.id); }} />
     )),
   // eslint-disable-next-line react-hooks/exhaustive-deps
   [browseAll, current?.id, isPlaying]);
 
-  const showResults = searched && !loading && results.length > 0;
-  const showEmpty = searched && !loading && results.length === 0;
-  const showSkeletons = loading;
+  const showResults  = searched && !loading && results.length > 0;
+  const showEmpty    = searched && !loading && results.length === 0;
 
   return (
     <div className="animate-fade-in space-y-6 px-3 pb-12 sm:space-y-8 sm:px-5 lg:px-8">
@@ -671,39 +566,39 @@ export const SearchView = memo(function SearchView() {
               : null}
         </div>
 
-        {/* ── Suggestions dropdown ── */}
-        {showSuggestions && suggestions.length > 0 && (
+        {/* ── Recent searches dropdown — fixed so it always floats above all content ── */}
+        {showRecents && recents.length > 0 && (
           <div
-            ref={suggestionsRef}
-            className="absolute left-0 right-0 top-full z-40 mt-2 overflow-hidden rounded-2xl
-              border border-white/5 bg-ink-900/95 backdrop-blur-xl shadow-2xl"
+            ref={recentsRef}
+            style={{ top: dropdownPos.top, left: dropdownPos.left, width: dropdownPos.width }}
+            className="fixed z-[999] overflow-hidden rounded-2xl
+              border border-white/10 bg-ink-900 shadow-2xl"
           >
-            {suggestions.map((s, i) => (
-              <SuggestionItem
-                key={`${s.type}-${s.text}`}
-                text={s.text}
-                type={s.type}
-                active={i === activeSuggestionIndex}
-                onSelect={() => selectSuggestion(s.text)}
+            <p className="px-4 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-widest text-ink-500">
+              Recent searches
+            </p>
+            {recents.map((text, i) => (
+              <RecentItem
+                key={text}
+                text={text}
+                active={i === activeRecentIdx}
+                onSelect={() => selectRecent(text)}
               />
             ))}
           </div>
         )}
       </div>
+
       {voiceError && <p className="text-sm text-red-400">{voiceError}</p>}
 
       {/* ── Voice listening modal ── */}
       {voiceListening && (
-        <div
-          onClick={toggleVoiceSearch}
-          className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-black/80 backdrop-blur-sm"
-        >
-          <div
-            onClick={e => e.stopPropagation()}
+        <div onClick={toggleVoiceSearch}
+          className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-black/80 backdrop-blur-sm">
+          <div onClick={e => e.stopPropagation()}
             className="flex w-[92%] max-w-xs sm:max-w-sm flex-col items-center gap-6 rounded-3xl
               border border-brand-400/20 bg-gradient-to-b from-brand-500/10 to-ink-900/50
-              p-5 sm:p-8 shadow-2xl max-h-[80vh] overflow-auto mt-24 sm:mt-0"
-          >
+              p-5 sm:p-8 shadow-2xl max-h-[80vh] overflow-auto mt-24 sm:mt-0">
             <div className="flex items-end justify-center gap-1 h-16">
               {Array.from({ length: 12 }).map((_, i) => (
                 <div key={i} className="w-1 rounded-full bg-gradient-to-t from-brand-400 to-brand-300"
@@ -732,31 +627,30 @@ export const SearchView = memo(function SearchView() {
       {!query.trim() && (
         <>
           <section>
-            <h2 className="mb-3 font-display text-lg font-bold text-ink-50 sm:mb-4 sm:text-xl">Browse genres</h2>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-6">
+            <h2 className="mb-3 font-display text-base font-bold text-ink-50 sm:text-lg">Browse genres</h2>
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3 lg:grid-cols-4">
               {GENRES.map(g => (
                 <button key={g.label} onClick={() => playGenre(g)}
-                  className="group relative h-24 overflow-hidden rounded-2xl p-4 text-left
-                    transition-transform hover:scale-[1.02] active:scale-[0.98] sm:h-28"
-                  style={{ background: `linear-gradient(135deg, hsl(${g.hue} 60% 35%), hsl(${(g.hue + 40) % 360} 55% 22%))` }}
-                >
-                  <span className="font-display text-base font-bold text-white drop-shadow sm:text-lg">{g.label}</span>
-                  <Play size={18} className="absolute bottom-3 right-3 fill-white text-white opacity-0 transition-opacity group-hover:opacity-100" />
+                  className="group relative flex items-center gap-3 overflow-hidden rounded-2xl
+                    p-3.5 text-left transition-all hover:scale-[1.02] active:scale-[0.98]"
+                  style={{ background: `linear-gradient(135deg, hsl(${g.hue} 55% 28%), hsl(${(g.hue + 50) % 360} 45% 18%))` }}>
+                  <span className="text-2xl">{g.icon}</span>
+                  <span className="font-semibold text-sm text-white leading-tight">{g.label}</span>
                 </button>
               ))}
             </div>
           </section>
 
           <section>
-            <h2 className="mb-3 font-display text-lg font-bold text-ink-50 sm:mb-4 sm:text-xl">Browse all</h2>
-            {browseLoading && <SkeletonRows count={10} />}
-            {!browseLoading && browseAll.length > 0 && (
-              <div className="overflow-hidden rounded-xl">{browseRows}</div>
-            )}
-            {!browseLoading && browseAll.length === 0 && (
+            <h2 className="mb-3 font-display text-base font-bold text-ink-50 sm:text-lg">Trending right now</h2>
+            {browseLoading ? (
+              <SkeletonRows count={8} />
+            ) : browseAll.length > 0 ? (
+              <div className="space-y-1">{browseRows}</div>
+            ) : (
               <div className="flex flex-col items-center justify-center py-10 text-center">
-                <Music2 size={28} className="mb-3 text-ink-400" />
-                <p className="text-sm text-ink-400">Couldn't load songs right now.</p>
+                <Music2 size={26} className="mb-2 text-ink-600" />
+                <p className="text-sm text-ink-500">Couldn't load songs right now.</p>
               </div>
             )}
           </section>
@@ -764,53 +658,41 @@ export const SearchView = memo(function SearchView() {
       )}
 
       {/* ── Loading skeleton ── */}
-      {showSkeletons && (
+      {loading && (
         <section>
-          <h2 className="mb-3 font-display text-lg font-bold text-ink-50 sm:text-xl">Songs</h2>
-          <SkeletonRows count={7} />
+          <div className="mb-3 h-5 w-24 animate-pulse rounded-lg bg-ink-800" />
+          <SkeletonRows count={6} />
         </section>
       )}
 
       {/* ── Empty state ── */}
       {showEmpty && (
-        <div className="flex flex-col items-center justify-center py-16 text-center sm:py-20">
-          <div className="grid h-14 w-14 place-items-center rounded-full border border-white/5 bg-white/[0.03] text-ink-300 backdrop-blur-xl sm:h-16 sm:w-16">
-            <SearchIcon size={26} />
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <div className="grid h-14 w-14 place-items-center rounded-full border border-white/5 bg-white/[0.03] text-ink-500">
+            <SearchIcon size={24} />
           </div>
-          <p className="mt-4 font-display text-base font-semibold text-ink-100 sm:text-lg">No results for "{query}"</p>
-          <p className="mt-1 text-xs text-ink-300 sm:text-sm">Try a different song or artist name.</p>
+          <p className="mt-4 text-base font-semibold text-ink-200">No results for "{query}"</p>
+          <p className="mt-1 text-xs text-ink-500">Try a different song or artist name.</p>
         </div>
       )}
 
       {/* ── Results ── */}
       {showResults && (
         <section>
-          <h2 className="mb-3 font-display text-lg font-bold text-ink-50 sm:text-xl">
-            {(() => {
-              if (results.length >= 3) {
+          <div className="mb-2 flex items-baseline gap-2">
+            <h2 className="font-display text-base font-bold text-ink-50 sm:text-lg">
+              {(() => {
                 const q = query.trim().toLowerCase();
-                const artistMatch = results.filter(s =>
-                  s.artist.toLowerCase().includes(q)
-                );
-                if (artistMatch.length >= Math.ceil(results.length * 0.6)) {
-                  return (
-            <>
-              <span className="break-words">
-                Songs by <span className="text-brand-400">{results[0].artist}</span>
-              </span>
-              <span className="ml-2 shrink-0 text-sm font-normal text-ink-400">{results.length} songs</span>
-            </>
-                  );
+                const artistMatch = results.filter(s => s.artist.toLowerCase().includes(q));
+                if (results.length >= 3 && artistMatch.length >= Math.ceil(results.length * 0.6)) {
+                  return <><span className="text-brand-400">{results[0].artist}</span></>;
                 }
-              }
-              return (
-                <>
-                  Results <span className="ml-2 text-sm font-normal text-ink-400">{results.length} songs</span>
-                </>
-              );
-            })()}
-          </h2>
-          <div className="overflow-hidden rounded-xl">{resultRows}</div>
+                return 'Results';
+              })()}
+            </h2>
+            <span className="text-xs text-ink-500">{results.length} songs</span>
+          </div>
+          <div className="space-y-1">{resultRows}</div>
         </section>
       )}
     </div>

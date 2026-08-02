@@ -6,6 +6,15 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
  * All query params are forwarded as-is.
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // Handle CORS preflight
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept');
+  if (req.method === 'OPTIONS') {
+    res.status(204).end();
+    return;
+  }
+
   const params = req.query as Record<string, string>;
   const qs = new URLSearchParams(params).toString();
   const upstream = `https://www.jiosaavn.com/api.php?${qs}`;
@@ -20,7 +29,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const body = await upstream_res.text();
 
-    res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Content-Type', upstream_res.headers.get('content-type') ?? 'application/json');
     res.status(upstream_res.status).send(body);
   } catch (err) {

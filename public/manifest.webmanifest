@@ -14,6 +14,9 @@
   "dir": "ltr",
   "categories": ["music", "entertainment"],
   "prefer_related_applications": false,
+  "capabilities": [
+    "audio-playback"
+  ],
   "icons": [
     {
       "src": "/icons/icon-72.png",
