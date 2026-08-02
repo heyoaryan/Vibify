@@ -16,6 +16,7 @@ import { getSettings } from './settings';
 import { recordPlay, addListenSeconds, flushListenSeconds } from './history';
 import { getQuickRecommendations } from './recommendations';
 import { getJamendoTrackUrl, isJamendoId } from './jamendo';
+import { getSongDetails } from './saavn';
 
 // ─── Context is split into two parts ─────────────────────────────────────────
 // 1. PlayerContext  — stable state that changes only on song/control changes
@@ -74,43 +75,52 @@ export function usePlayback(): PlaybackContextValue {
 // ─── Two Audio elements for crossfade ────────────────────────────────────────
 // audioA is the "active" element. audioB is the "next" element that fades in.
 // After a crossfade completes, A and B swap roles.
-function makeAudio() {
+//
+// IMPORTANT: We maintain two separate pairs of Audio elements:
+//   - audioA / audioB    → used when audioEnhancement is OFF (no crossOrigin set)
+//   - audioAcors / audioBcors → used when audioEnhancement is ON (crossOrigin='anonymous')
+//
+// This is necessary because once crossOrigin is set on an HTMLAudioElement, ALL
+// subsequent src loads go through CORS preflight. JioSaavn CDN does not send
+// CORS headers, so a CORS-tainted element can never play JioSaavn tracks.
+// Jamendo does send CORS headers, so the enhanced pair is safe for Jamendo.
+// We pick the right pair based on the current song's provider at load time.
+function makeAudio(withCors = false) {
   if (typeof Audio === 'undefined') return null;
   const el = new Audio();
   el.preload = 'auto';
-  // crossOrigin is NOT set here. JioSaavn CDN does not send CORS headers, so
-  // setting crossOrigin='anonymous' would cause the browser to block the request.
-  // Web Audio API (createMediaElementSource) requires crossOrigin='anonymous',
-  // but we set it lazily in ensureAudioContext() only when audio enhancement is
-  // enabled, before any src is assigned to the element.
+  if (withCors) el.crossOrigin = 'anonymous';
   return el;
 }
 
-const audioA = makeAudio();
-const audioB = makeAudio();
+// Standard pair (no CORS) — used for JioSaavn and any unknown provider
+const audioA = makeAudio(false);
+const audioB = makeAudio(false);
 
-// Pointer to the currently active audio element (starts as A)
+// CORS pair — used for Jamendo when audioEnhancement is enabled
+const audioAcors = makeAudio(true);
+const audioBcors = makeAudio(true);
+
+// Pointers to the currently active audio elements
 let activeAudio: HTMLAudioElement | null = audioA;
 let nextAudio: HTMLAudioElement | null = audioB;
 
 // ─── Web Audio API for enhanced sound quality ─────────────────────────────────
+// Only ever connected to the CORS pair (audioAcors / audioBcors) since
+// createMediaElementSource requires CORS-enabled elements.
 let audioCtx: AudioContext | null = null;
-let sourceA: MediaElementAudioSourceNode | null = null;
-let sourceB: MediaElementAudioSourceNode | null = null;
+let sourceAcors: MediaElementAudioSourceNode | null = null;
+let sourceBcors: MediaElementAudioSourceNode | null = null;
 let bassFilter: BiquadFilterNode | null = null;
 let compressor: DynamicsCompressorNode | null = null;
 
 function ensureAudioContext() {
   if (!audioCtx && typeof AudioContext !== 'undefined' && getSettings().audioEnhancement) {
     try {
-      // crossOrigin must be set before createMediaElementSource.
-      // We only enable audio enhancement for Jamendo tracks (which do support CORS);
-      // for JioSaavn tracks the AudioContext path is skipped (no crossOrigin needed).
-      if (audioA) audioA.crossOrigin = 'anonymous';
-      if (audioB) audioB.crossOrigin = 'anonymous';
       audioCtx = new AudioContext();
-      sourceA = audioCtx.createMediaElementSource(audioA!);
-      sourceB = audioCtx.createMediaElementSource(audioB!);
+      // Connect only the CORS pair to the Web Audio graph
+      sourceAcors = audioCtx.createMediaElementSource(audioAcors!);
+      sourceBcors = audioCtx.createMediaElementSource(audioBcors!);
       bassFilter = audioCtx.createBiquadFilter();
       bassFilter.type = 'lowshelf';
       bassFilter.frequency.value = 200;
@@ -123,15 +133,57 @@ function ensureAudioContext() {
       compressor.attack.value = 0.003;
       compressor.release.value = 0.25;
 
-      sourceA.connect(bassFilter).connect(compressor).connect(audioCtx.destination);
-      sourceB.connect(bassFilter).connect(compressor).connect(audioCtx.destination);
+      sourceAcors.connect(bassFilter).connect(compressor).connect(audioCtx.destination);
+      sourceBcors.connect(bassFilter).connect(compressor).connect(audioCtx.destination);
     } catch (e) {
       console.warn('[audio] Web Audio API not available:', e);
+      audioCtx = null;
     }
   }
+  // Resume a suspended context (required after user gesture on iOS/Chrome)
   if (audioCtx?.state === 'suspended') {
-    audioCtx.resume();
+    audioCtx.resume().catch(() => {});
   }
+}
+
+/**
+ * Pick the right audio element pair for a given song.
+ * Jamendo tracks with audioEnhancement → CORS pair (supports Web Audio).
+ * Everything else → standard pair (no CORS, works with JioSaavn CDN).
+ *
+ * Returns [active, next] for the pair that should play this song.
+ */
+function pickAudioPair(song: Song): [HTMLAudioElement, HTMLAudioElement] | [null, null] {
+  if (getSettings().audioEnhancement && isJamendoId(song.id)) {
+    return [audioAcors, audioBcors];
+  }
+  return [audioA, audioB];
+}
+
+/**
+ * Ensure the active/next pointers use the correct pair for `song`.
+ * If switching providers (e.g. Jamendo → JioSaavn), silently swap the pair
+ * and stop/reset the old elements.
+ */
+function activatePairForSong(song: Song) {
+  const [a, b] = pickAudioPair(song);
+  if (!a || !b) return;
+
+  // If we're already on the right pair, nothing to do
+  if (activeAudio === a) return;
+
+  // Stop the currently active element before handing off
+  if (activeAudio && activeAudio !== a && activeAudio !== b) {
+    activeAudio.pause();
+    activeAudio.src = '';
+  }
+  if (nextAudio && nextAudio !== a && nextAudio !== b) {
+    nextAudio.pause();
+    nextAudio.src = '';
+  }
+
+  activeAudio = a;
+  nextAudio = b;
 }
 
 function downgradeQuality(src: string): string | null {
@@ -154,28 +206,38 @@ function downgradeQuality(src: string): string | null {
 
 /**
  * iOS Safari (and some Android WebViews) silently block audio playback until
- * the user has interacted with the page. We unlock the audio element on the
- * first touchstart/click by playing a zero-duration silent buffer and
- * immediately pausing it.
+ * the user has interacted with the page. We unlock ALL four audio elements on
+ * the first touchstart/click by playing a silent buffer and immediately pausing.
+ *
+ * We also always call ensureAudioContext() here (regardless of the enhancement
+ * setting) so the AudioContext is created — and resumed if suspended — while we
+ * have an active user gesture. This is mandatory on iOS and Chrome ≥ 70.
  */
 function unlockAudioOnFirstGesture() {
+  let unlocked = false;
+
   const unlock = () => {
-    if (getSettings().audioEnhancement) {
-      ensureAudioContext();
-    }
-    [audioA, audioB].forEach((el) => {
+    if (unlocked) return;
+    unlocked = true;
+
+    // Always try to create/resume the AudioContext inside the user gesture
+    ensureAudioContext();
+
+    // Unlock all four elements so we can switch between them freely later
+    [audioA, audioB, audioAcors, audioBcors].forEach((el) => {
       if (!el) return;
+      const prev = el.volume;
       el.volume = 0;
       el.play()
-        .then(() => { el.pause(); el.volume = 0.8; })
-        .catch(() => { el.volume = 0.8; });
+        .then(() => { el.pause(); el.volume = prev || 0.8; })
+        .catch(() => { el.volume = prev || 0.8; });
     });
-    document.removeEventListener('touchstart', unlock, true);
-    document.removeEventListener('mousedown', unlock, true);
   };
 
   document.addEventListener('touchstart', unlock, { once: true, capture: true, passive: true });
   document.addEventListener('mousedown', unlock, { once: true, capture: true });
+  // pointerdown covers stylus and other pointer devices
+  document.addEventListener('pointerdown', unlock, { once: true, capture: true });
 }
 
 unlockAudioOnFirstGesture();
@@ -324,26 +386,61 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const song = currentRef.current;
     const retries = retryCountRef.current;
 
-    // For Jamendo tracks, try refreshing the expired streaming URL first
+    /**
+     * Helper: reload activeAudio with a new src and wait for canplay before
+     * calling play(). All retry paths use this to avoid the premature-play
+     * race condition that breaks iOS / Chrome autoplay policy.
+     */
+    const reloadAndPlay = (newSrc: string) => {
+      if (!activeAudio) return;
+      retryCountRef.current = 0;
+      playedRef.current = false;
+      activeAudio.src = newSrc;
+      activeAudio.load();
+      const onCanPlay = () => {
+        if (playedRef.current) return;
+        playedRef.current = true;
+        activeAudio?.removeEventListener('canplay', onCanPlay);
+        activeAudio?.play().catch((err: DOMException) => {
+          if (err.name === 'AbortError') return;
+          console.error('[player] reloadAndPlay() failed:', err.name, err.message);
+          handlePlaybackFailure();
+        });
+      };
+      activeAudio.addEventListener('canplay', onCanPlay);
+    };
+
+    // For Jamendo tracks — refresh the expired streaming URL first
     if (isJamendoId(song.id)) {
       try {
         const freshUrl = await getJamendoTrackUrl(song.id);
         if (freshUrl) {
-          retryCountRef.current = 0;
-          playedRef.current = false;
-          activeAudio.src = freshUrl;
-          activeAudio.load();
-          activeAudio.play().catch((err: DOMException) => {
-            if (err.name === 'AbortError') return;
-            console.error('[player] jamendo refresh play() failed:', err.name, err.message);
-            handlePlaybackFailure();
-          });
           setQueue(q => q.map(s => s.id === song.id ? { ...s, src: freshUrl } : s));
-          sourceQueueRef.current = sourceQueueRef.current.map(s => s.id === song.id ? { ...s, src: freshUrl } : s);
+          sourceQueueRef.current = sourceQueueRef.current.map(s =>
+            s.id === song.id ? { ...s, src: freshUrl } : s,
+          );
+          reloadAndPlay(freshUrl);
           return;
         }
       } catch {
         // fall through to normal retry logic
+      }
+    }
+
+    // For JioSaavn tracks with empty/expired src — re-fetch song details
+    if (!isJamendoId(song.id) && retries >= 2) {
+      try {
+        const freshSong = await getSongDetails(song.id);
+        if (freshSong?.src && freshSong.src !== activeAudio.src) {
+          setQueue(q => q.map(s => s.id === song.id ? { ...s, src: freshSong.src } : s));
+          sourceQueueRef.current = sourceQueueRef.current.map(s =>
+            s.id === song.id ? { ...s, src: freshSong.src } : s,
+          );
+          reloadAndPlay(freshSong.src);
+          return;
+        }
+      } catch {
+        // fall through
       }
     }
 
@@ -354,25 +451,24 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         if (!activeAudio) return;
         playedRef.current = false;
         activeAudio.load();
-        activeAudio.play().catch((err: DOMException) => {
-          if (err.name === 'AbortError') return;
-          console.error('[player] retry play() failed:', err.name, err.message);
-          handlePlaybackFailure();
-        });
+        const onCanPlay = () => {
+          if (playedRef.current) return;
+          playedRef.current = true;
+          activeAudio?.removeEventListener('canplay', onCanPlay);
+          activeAudio?.play().catch((err: DOMException) => {
+            if (err.name === 'AbortError') return;
+            console.error('[player] retry play() failed:', err.name, err.message);
+            handlePlaybackFailure();
+          });
+        };
+        activeAudio.addEventListener('canplay', onCanPlay);
       }, delay);
     } else {
       const lowerSrc = downgradeQuality(activeAudio.src);
       if (lowerSrc) {
-        retryCountRef.current = 0;
-        playedRef.current = false;
-        activeAudio.src = lowerSrc;
-        activeAudio.load();
-        activeAudio.play().catch((err: DOMException) => {
-          if (err.name === 'AbortError') return;
-          console.error('[player] quality downgrade play() failed:', err.name, err.message);
-          handlePlaybackFailure();
-        });
+        reloadAndPlay(lowerSrc);
       } else {
+        // All retries exhausted — stop playback gracefully
         setIsPlaying(false);
       }
     }
@@ -393,7 +489,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       clearCrossfadeState();
       if (activeAudio) {
         activeAudio.currentTime = 0;
-        activeAudio.play().catch(() => setIsPlaying(false));
+        activeAudio.play().catch((err: DOMException) => {
+          if (err.name !== 'AbortError') setIsPlaying(false);
+        });
       }
       return;
     }
@@ -440,7 +538,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     else if (idx < q.length - 1) { nextIdx = idx + 1; }
     else if (rep === 'all' && q.length > 0) { nextIdx = 0; }
 
-    if (nextIdx === null || !nextAudio) {
+    if (nextIdx === null) {
       cancelFadeOutRef.current = rampVolume(activeAudio, targetVol, 0, fadeMs);
       return;
     }
@@ -448,22 +546,32 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const nextSong = q[nextIdx];
     if (!nextSong?.src) return;
 
-    nextAudio.src = nextSong.src;
-    nextAudio.volume = 0;
-    nextAudio.load();
+    // Pick the correct pair for the next song (Jamendo vs JioSaavn)
+    // We need the "next" side of whichever pair matches nextSong's provider.
+    const [pairActive, pairNext] = getSettings().audioEnhancement && isJamendoId(nextSong.id)
+      ? [audioAcors, audioBcors]
+      : [audioA, audioB];
+
+    // nextAudio for crossfade must be the "next" slot of the correct pair
+    const xfadeNext = (activeAudio === pairActive) ? pairNext : pairActive;
+    if (!xfadeNext) return;
+
+    xfadeNext.src = nextSong.src;
+    xfadeNext.volume = 0;
+    xfadeNext.load();
 
     const startCrossfade = () => {
-      if (!nextAudio || !activeAudio) return;
+      if (!xfadeNext || !activeAudio) return;
       cancelFadeOutRef.current = rampVolume(activeAudio, targetVol, 0, fadeMs);
-      nextAudio.play().catch((err: DOMException) => {
-        if (err.name !== 'AbortError') console.error('[crossfade] nextAudio.play() failed:', err.name);
+      xfadeNext.play().catch((err: DOMException) => {
+        if (err.name !== 'AbortError') console.error('[crossfade] xfadeNext.play() failed:', err.name);
       });
-      cancelFadeInRef.current = rampVolume(nextAudio, 0, targetVol, fadeMs, () => {
-        if (!activeAudio || !nextAudio) return;
+      cancelFadeInRef.current = rampVolume(xfadeNext, 0, targetVol, fadeMs, () => {
+        if (!activeAudio || !xfadeNext) return;
         activeAudio.pause();
         activeAudio.src = '';
         const tmp = activeAudio;
-        activeAudio = nextAudio;
+        activeAudio = xfadeNext;
         nextAudio = tmp;
         rewireListeners();
         flushListenSeconds();
@@ -480,11 +588,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       });
     };
 
-    if (nextAudio.readyState >= 3) {
+    if (xfadeNext.readyState >= 3) {
       startCrossfade();
     } else {
-      const onReady = () => { nextAudio?.removeEventListener('canplay', onReady); startCrossfade(); };
-      nextAudio.addEventListener('canplay', onReady);
+      const onReady = () => { xfadeNext.removeEventListener('canplay', onReady); startCrossfade(); };
+      xfadeNext.addEventListener('canplay', onReady);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -634,7 +742,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
    * Whenever `current` changes (new song id), load and play it on activeAudio.
    */
   useEffect(() => {
-    if (!activeAudio || !current) return;
+    if (!current) return;
 
     if (!current.src) {
       console.warn('[player] song has empty src, skipping:', current.title);
@@ -646,6 +754,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       crossfadeLoadedIdRef.current = null; // consume the guard
       return;
     }
+
+    // Switch to the correct audio pair for this song's provider.
+    // Must happen before we reference activeAudio below.
+    activatePairForSong(current);
+
+    // Resume AudioContext if it exists but was suspended (e.g. iOS background)
+    if (audioCtx?.state === 'suspended') {
+      audioCtx.resume().catch(() => {});
+    }
+
+    if (!activeAudio) return;
 
     console.debug('[player] loading:', current.title, '| src:', current.src.slice(0, 80));
 
@@ -838,10 +957,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const playSongs = useCallback((list: Song[], startId?: string) => {
     if (!list.length) return;
     if (!canGuestPlaySong()) {
+      // Fire a custom event so App.tsx can show the "Guest limit reached" modal
+      window.dispatchEvent(new Event('vibify-guest-limit'));
       console.warn('[player] guest playback limit reached');
       return;
     }
     if (!consumeGuestPlayback()) {
+      window.dispatchEvent(new Event('vibify-guest-limit'));
       console.warn('[player] consumeGuestPlayback failed');
       return;
     }
@@ -878,15 +1000,35 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const togglePlay = useCallback(() => {
     if (!activeAudio || !currentRef.current) return;
+
+    // Resume a suspended AudioContext first (required on iOS/Chrome)
+    if (audioCtx?.state === 'suspended') {
+      audioCtx.resume().catch(() => {});
+    }
+
     if (activeAudio.paused) {
       setHasStarted(true);
-      if (!activeAudio.src || activeAudio.src === window.location.href) {
+      const srcMissing = !activeAudio.src || activeAudio.src === window.location.href;
+      if (srcMissing) {
         const song = currentRef.current;
         if (song?.src) {
           clearRetryState();
           playedRef.current = false;
           activeAudio.src = song.src;
           activeAudio.load();
+          // Wait for canplay before playing — avoids NotAllowedError on iOS
+          const onCanPlay = () => {
+            if (playedRef.current) return;
+            playedRef.current = true;
+            activeAudio?.removeEventListener('canplay', onCanPlay);
+            activeAudio?.play().catch((err: DOMException) => {
+              if (err.name === 'AbortError') return;
+              console.error('[player] togglePlay reload play() failed:', err.name, err.message);
+              handlePlaybackFailure();
+            });
+          };
+          activeAudio.addEventListener('canplay', onCanPlay);
+          return;
         }
       }
       activeAudio.play().catch((err: DOMException) => {
