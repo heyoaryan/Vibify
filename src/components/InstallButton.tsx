@@ -1,18 +1,13 @@
 /**
  * InstallButton — inline PWA install control.
  *
- * Renders:
- *   - an "Install" button when the app can be installed,
- *   - a disabled "Installing…" pill while the progress bar animates,
- *   - an "Open" button once installed.
- *
- * Visibility is driven by the shared PWA install context, so it only appears
- * when the app is actually installable (Android/Desktop beforeinstallprompt,
- * or iOS after the guide is dismissed). Used in the desktop sidebar
- * (IconRail) and the mobile/tablet top bar (TopBar).
+ * Shows only an icon (no text label) so it doesn't clutter the top bar.
+ *   - Download icon when installable
+ *   - Animated buffering ring while installing
+ *   - Check icon once installed
  */
 
-import { CheckCircle, Download, Loader2 } from 'lucide-react';
+import { CheckCircle, Download } from 'lucide-react';
 import { usePWAInstall } from '../pwaInstall';
 
 export function InstallButton({ className = '' }: { className?: string }) {
@@ -20,38 +15,56 @@ export function InstallButton({ className = '' }: { className?: string }) {
 
   if (!canShowInline) return null;
 
+  // ── Installing — pulsing buffer ring ───────────────────────────────────────
   if (state === 'installing') {
     return (
       <span
-        className={`flex items-center justify-center gap-1.5 rounded-xl bg-brand-500/15 px-3 py-2.5 text-sm font-semibold text-brand-300 ${className}`}
         aria-live="polite"
+        aria-label="Installing Vibify…"
+        className={`relative grid h-10 w-10 place-items-center rounded-full bg-brand-500/15 ${className}`}
       >
-        <Loader2 size={15} className="animate-spin" />
-        Installing…
+        {/* Spinning arc */}
+        <svg
+          className="absolute inset-0 animate-spin"
+          viewBox="0 0 40 40"
+          fill="none"
+          aria-hidden="true"
+        >
+          <circle cx="20" cy="20" r="16" stroke="rgba(255,255,255,0.08)" strokeWidth="3" />
+          <path
+            d="M20 4 A16 16 0 0 1 36 20"
+            stroke="#14c4ad"
+            strokeWidth="3"
+            strokeLinecap="round"
+          />
+        </svg>
+        <Download size={15} className="text-brand-300" aria-hidden="true" />
       </span>
     );
   }
 
+  // ── Installed ───────────────────────────────────────────────────────────────
   if (state === 'installed') {
     return (
       <span
-        className={`flex items-center justify-center gap-1.5 rounded-xl bg-brand-500/15 px-3 py-2.5 text-sm font-semibold text-brand-300 ${className}`}
+        aria-label="Vibify installed"
+        className={`grid h-10 w-10 place-items-center rounded-full bg-brand-500/20 text-brand-300 ${className}`}
       >
-        <CheckCircle size={15} />
-        Open
+        <CheckCircle size={17} />
       </span>
     );
   }
 
+  // ── Available — icon-only install button ────────────────────────────────────
   return (
     <button
       onClick={install}
       aria-label="Install Vibify"
       title="Install Vibify"
-      className={`flex items-center justify-center gap-1.5 rounded-xl bg-brand-500/15 px-3 py-2.5 text-sm font-semibold text-brand-300 transition hover:bg-brand-500/25 active:scale-95 ${className}`}
+      className={`grid h-10 w-10 place-items-center rounded-full bg-brand-500/15
+        text-brand-300 transition hover:bg-brand-500/30 active:scale-95 ${className}`}
     >
-      <Download size={15} />
-      Install
+      <Download size={17} aria-hidden="true" />
     </button>
   );
 }

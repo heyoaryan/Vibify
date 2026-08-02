@@ -1,10 +1,14 @@
 /**
- * PWAInstallContext
+ * PWAInstallContext — cross-platform install state
  *
- * Shared PWA install state + actions so that:
- *   - the bottom Install banner (Android/Desktop/iOS guide) and
- *   - inline Install buttons (sidebar on desktop, top bar on mobile)
- * all stay in sync from a single source of truth.
+ * Platform coverage:
+ *   ✅ Android Chrome / Samsung Internet / Edge  → beforeinstallprompt API
+ *   ✅ iOS Safari                                → Share → Add to Home Screen guide
+ *   ✅ iOS Chrome / Firefox / other iOS browsers → same Share guide (Apple restriction)
+ *   ✅ macOS / Windows / Linux Chrome / Edge     → beforeinstallprompt API
+ *   ✅ macOS Safari (desktop)                    → desktop manual guide
+ *   ✅ Firefox (all platforms)                   → desktop manual guide fallback
+ *   ✅ Already installed (any platform)          → nothing shown
  */
 
 import {
@@ -19,20 +23,19 @@ import {
 import { InstalledToast } from './components/InstalledToast';
 
 export type InstallState =
-  | 'hidden'       // nothing to show
-  | 'available'    // install button can be shown
-  | 'installing'   // progress bar animating
-  | 'installed'    // show "Open App"
-  | 'ios-guide';   // iOS Safari manual steps
+  | 'hidden'          // nothing to show
+  | 'available'       // native prompt ready (Chrome/Edge/Android/Samsung)
+  | 'installing'      // progress animation running
+  | 'installed'       // show "Open App"
+  | 'ios-guide'       // iOS any browser — Share menu steps
+  | 'desktop-guide';  // macOS Safari / Firefox / unsupported — manual steps
 
-type BeforeInstallPromptEvent = Event & {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
-};
+// ─── Platform helpers ─────────────────────────────────────────────────────────
 
 function isAlreadyInstalled(): boolean {
   return (
     window.matchMedia('(display-mode: standalone)').matches ||
+    window.matchMedia('(display-mode: window-controls-overlay)').matches ||
     (window.navigator as { standalone?: boolean }).standalone === true
   );
 }
@@ -44,53 +47,99 @@ function isIOS(): boolean {
   );
 }
 
-function isIOSSafari(): boolean {
+function isDesktopSafari(): boolean {
   return (
-    isIOS() &&
-    /safari/i.test(navigator.userAgent) &&
-    !/crios|fxios|opios/i.test(navigator.userAgent)
+    !isIOS() &&
+    /^((?!chrome|chromium|android).)*safari/i.test(navigator.userAgent)
   );
 }
 
-const DISMISS_KEY = 'vibify-pwa-dismissed';
-const DEV_FORCE =
-  import.meta.env.DEV &&
-  new URLSearchParams(window.location.search).get('pwa') === '1';
+function isFirefox(): boolean {
+  return /firefox|fxios/i.test(navigator.userAgent);
+}
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
+};
+
+export type InstallPlatform = 'native' | 'ios' | 'desktop-manual';
 
 interface PWAInstallValue {
   state: InstallState;
   progress: number;
-  canShowInline: boolean;        // true when an inline Install button should render
-  showBannerCard: boolean;       // true when the bottom card/guide should render
-  install: () => void;           // click handler for inline or card Install button
-  openApp: () => void;           // click handler for "Open App"
-  dismiss: () => void;           // hide banner + inline button for this session
+  platform: InstallPlatform;
+  canShowInline: boolean;
+  showBannerCard: boolean;
+  install: () => void;
+  openApp: () => void;
+  dismiss: () => void;
 }
 
 const PWAInstallContext = createContext<PWAInstallValue | null>(null);
 
+const DISMISS_KEY = 'vibify-pwa-dismissed';
+
+// Dev query-param overrides: ?pwa=1 | ?pwa=ios | ?pwa=desktop
+const DEV_OVERRIDE =
+  import.meta.env.DEV
+    ? new URLSearchParams(window.location.search).get('pwa')
+    : null;
+
+// ─── Provider ─────────────────────────────────────────────────────────────────
+
 export function PWAInstallProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<InstallState>('hidden');
+  const [state, setState]       = useState<InstallState>('hidden');
   const [progress, setProgress] = useState(0);
   const [dismissed, setDismissed] = useState(false);
-  const promptRef = useRef<BeforeInstallPromptEvent | null>(null);
-  const rafRef = useRef<number | null>(null);
-  const startRef = useRef<number | null>(null);
+  const [platform, setPlatform] = useState<InstallPlatform>('native');
+
+  const promptRef  = useRef<BeforeInstallPromptEvent | null>(null);
+  const rafRef     = useRef<number | null>(null);
+  const startRef   = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!DEV_FORCE && isAlreadyInstalled()) return;
-    if (!DEV_FORCE && sessionStorage.getItem(DISMISS_KEY)) {
+    if (!DEV_OVERRIDE && isAlreadyInstalled()) return;
+    if (!DEV_OVERRIDE && sessionStorage.getItem(DISMISS_KEY)) {
       setDismissed(true);
       return;
     }
 
-    if (isIOSSafari() || (DEV_FORCE && new URLSearchParams(window.location.search).get('pwa') === 'ios')) {
-      const t = setTimeout(() => setState('ios-guide'), DEV_FORCE ? 500 : 2500);
+    // ── Dev overrides ──────────────────────────────────────────────────────
+    if (DEV_OVERRIDE === 'ios') {
+      setPlatform('ios');
+      setTimeout(() => setState('ios-guide'), 500);
+      return;
+    }
+    if (DEV_OVERRIDE === 'desktop') {
+      setPlatform('desktop-manual');
+      setTimeout(() => setState('desktop-guide'), 500);
+      return;
+    }
+    if (DEV_OVERRIDE === '1') {
+      setPlatform('native');
+      setState('available');
+      return;
+    }
+
+    // ── iOS (any browser) — Apple restricts install to Share menu ─────────
+    if (isIOS()) {
+      setPlatform('ios');
+      const t = setTimeout(() => setState('ios-guide'), 2500);
       return () => clearTimeout(t);
     }
 
-    if (DEV_FORCE) { setState('available'); return; }
+    // ── Desktop Safari / Firefox — no beforeinstallprompt support ─────────
+    if (isDesktopSafari() || isFirefox()) {
+      setPlatform('desktop-manual');
+      const t = setTimeout(() => setState('desktop-guide'), 2500);
+      return () => clearTimeout(t);
+    }
 
+    // ── Chrome / Edge / Samsung / Android — native prompt ─────────────────
+    setPlatform('native');
     const handler = (e: Event) => {
       e.preventDefault();
       promptRef.current = e as BeforeInstallPromptEvent;
@@ -144,12 +193,9 @@ export function PWAInstallProvider({ children }: { children: ReactNode }) {
   }, [animateProgress]);
 
   const openApp = useCallback(() => {
-    // Hand off to the service worker, which focuses the already-open standalone
-    // PWA window or launches the installed app via the OS (not a plain tab).
     if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
       navigator.serviceWorker.controller.postMessage({ type: 'OPEN_APP' });
     } else if ('serviceWorker' in navigator) {
-      // Fallback: SW registered but not yet controlling this page.
       navigator.serviceWorker.ready.then((reg) => {
         if (reg.active) reg.active.postMessage({ type: 'OPEN_APP' });
       });
@@ -157,18 +203,14 @@ export function PWAInstallProvider({ children }: { children: ReactNode }) {
     setState('hidden');
   }, []);
 
-  const visible = !dismissed && state !== 'hidden';
-  const canShowInline = visible && (state === 'available' || state === 'installed' || state === 'installing');
-  const showBannerCard = visible && state === 'ios-guide';
+  const visible       = !dismissed && state !== 'hidden';
+  const canShowInline = visible && (state === 'available' || state === 'installing' || state === 'installed');
+  const showBannerCard = visible && (state === 'ios-guide' || state === 'desktop-guide');
 
   const value: PWAInstallValue = {
-    state,
-    progress,
-    canShowInline,
-    showBannerCard,
-    install,
-    openApp,
-    dismiss,
+    state, progress, platform,
+    canShowInline, showBannerCard,
+    install, openApp, dismiss,
   };
 
   return (
@@ -182,15 +224,10 @@ export function PWAInstallProvider({ children }: { children: ReactNode }) {
 export function usePWAInstall(): PWAInstallValue {
   const ctx = useContext(PWAInstallContext);
   if (!ctx) {
-    // Safe no-op fallback if used outside the provider.
     return {
-      state: 'hidden',
-      progress: 0,
-      canShowInline: false,
-      showBannerCard: false,
-      install: () => {},
-      openApp: () => {},
-      dismiss: () => {},
+      state: 'hidden', progress: 0, platform: 'native',
+      canShowInline: false, showBannerCard: false,
+      install: () => {}, openApp: () => {}, dismiss: () => {},
     };
   }
   return ctx;
